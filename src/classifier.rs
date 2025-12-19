@@ -11,6 +11,8 @@ pub struct Classification {
     pub is_important: bool,
     #[serde(default)]
     pub archive: bool,
+    #[serde(default)]
+    pub delete: bool,
     pub labels: Vec<String>,
     pub confidence: f32,
 }
@@ -49,11 +51,12 @@ Body: {}
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
 - is_important: true if requires attention or action
-- labels: assign 1-3 descriptive labels. Examples: "receipts", "newsletters", "promotional", "work", "personal", "shipping", "social", "security", "finance", "travel". Use "accounts" ONLY for registration, password reset, or account security emails - not for service notifications
+- labels: assign 1-3 descriptive labels. Examples: "Receipts", "Newsletters", "Promotional", "Work", "Personal", "Shipping", "Social", "Security", "Finance", "Travel". Use "Accounts" ONLY for registration, password reset emails - not for service notifications
 - archive: true if email doesn't need to stay in inbox (promotional, newsletters, automated notifications)
+- delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
-{{"is_spam": false, "is_important": false, "labels": ["example"], "archive": false, "confidence": 0.8}}"#,
+{{"is_spam": false, "is_important": false, "labels": ["Example"], "archive": false, "delete": false, "confidence": 0.8}}"#,
             self.profile.content(),
             email.from,
             email.subject,

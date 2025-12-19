@@ -181,7 +181,13 @@ mod commands {
 
             // Build status indicators
             let status = build_status_indicators(&email.labels, classification.is_important);
-            let archive_indicator = if classification.archive { " → archive" } else { "" };
+            let action = if classification.delete {
+                " → DELETE"
+            } else if classification.archive {
+                " → archive"
+            } else {
+                ""
+            };
 
             println!(
                 "{} {} | {} | {:?}{}",
@@ -189,30 +195,39 @@ mod commands {
                 status,
                 email.subject.chars().take(50).collect::<String>(),
                 classification.labels,
-                archive_indicator
+                action
             );
 
             if !dry_run {
-                // Apply predicted labels to Gmail so user can recategorize
-                for label in &classification.labels {
-                    if let Err(e) = provider.add_label(&email.id, label).await {
-                        eprintln!("  Warning: couldn't apply label '{}': {}", label, e);
+                if classification.delete {
+                    // Auto-delete based on profile rules
+                    if let Err(e) = provider.trash(&email.id).await {
+                        eprintln!("  Warning: couldn't delete: {}", e);
                     }
-                }
-                // Mark as classified so it won't be processed again
-                if let Err(e) = provider.add_label(&email.id, "Classified").await {
-                    eprintln!("  Warning: couldn't apply Classified label: {}", e);
-                }
-                // Auto-archive if suggested
-                if classification.archive {
-                    if let Err(e) = provider.archive(&email.id).await {
-                        eprintln!("  Warning: couldn't archive: {}", e);
+                } else {
+                    // Apply predicted labels to Gmail so user can recategorize
+                    for label in &classification.labels {
+                        if let Err(e) = provider.add_label(&email.id, label).await {
+                            eprintln!("  Warning: couldn't apply label '{}': {}", label, e);
+                        }
+                    }
+                    // Mark as classified so it won't be processed again
+                    if let Err(e) = provider.add_label(&email.id, "Classified").await {
+                        eprintln!("  Warning: couldn't apply Classified label: {}", e);
+                    }
+                    // Auto-archive if suggested
+                    if classification.archive {
+                        if let Err(e) = provider.archive(&email.id).await {
+                            eprintln!("  Warning: couldn't archive: {}", e);
+                        }
                     }
                 }
                 predictions.store(&email.id, &email.from, &email.subject, &classification)?;
             } else {
                 println!("  [dry-run] Would apply labels: {:?}", classification.labels);
-                if classification.archive {
+                if classification.delete {
+                    println!("  [dry-run] Would DELETE");
+                } else if classification.archive {
                     println!("  [dry-run] Would archive");
                 }
             }
