@@ -64,7 +64,7 @@ Respond with JSON only:
         );
 
         let output = Command::new("claude")
-            .args(["-p", &prompt, "--output-format", "json"])
+            .args(["-p", &prompt, "--output-format", "json", "--model", "haiku"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
