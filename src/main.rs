@@ -13,6 +13,10 @@ use clap::{Parser, Subcommand};
 #[command(name = "email-assistant")]
 #[command(about = "AI-powered email classification and learning assistant")]
 struct Cli {
+    /// Dry run mode - show what would happen without making changes
+    #[arg(long, global = true)]
+    dry_run: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -67,33 +71,38 @@ enum LabelsAction {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let dry_run = cli.dry_run;
+
+    if dry_run {
+        println!("🔍 DRY RUN MODE - no changes will be made\n");
+    }
 
     match cli.command {
         Commands::Scan { max } => {
-            commands::scan(max).await?;
+            commands::scan(max, dry_run).await?;
         }
         Commands::Labels { action } => match action {
             Some(LabelsAction::Cleanup) => {
-                commands::labels_cleanup().await?;
+                commands::labels_cleanup(dry_run).await?;
             }
             None => {
                 commands::labels_list().await?;
             }
         },
         Commands::Spam { id } => {
-            commands::spam(&id).await?;
+            commands::spam(&id, dry_run).await?;
         }
         Commands::Unspam { id } => {
-            commands::unspam(&id).await?;
+            commands::unspam(&id, dry_run).await?;
         }
         Commands::Delete { id } => {
-            commands::delete(&id).await?;
+            commands::delete(&id, dry_run).await?;
         }
         Commands::Label { id, label } => {
-            commands::label(&id, &label).await?;
+            commands::label(&id, &label, dry_run).await?;
         }
         Commands::Learn => {
-            commands::learn().await?;
+            commands::learn(dry_run).await?;
         }
         Commands::Profile => {
             commands::profile().await?;
@@ -114,7 +123,7 @@ mod commands {
     use crate::providers::EmailProvider;
     use anyhow::Result;
 
-    pub async fn scan(max: u32) -> Result<()> {
+    pub async fn scan(max: u32, dry_run: bool) -> Result<()> {
         let _config = Config::load()?;
         let provider = GmailProvider::new().await?;
         let mut profile = Profile::load()?;
@@ -126,8 +135,12 @@ mod commands {
         let corrections = learning.detect_corrections().await?;
         if !corrections.is_empty() {
             println!("Found {} corrections, updating profile...", corrections.len());
-            learning.apply_corrections(&corrections).await?;
-            profile.save()?;
+            if !dry_run {
+                learning.apply_corrections(&corrections).await?;
+                profile.save()?;
+            } else {
+                println!("  [dry-run] Would update profile with corrections");
+            }
         }
 
         // Step 2: Classify new emails
@@ -147,10 +160,16 @@ mod commands {
                 classification.labels
             );
 
-            predictions.store(&email.id, &classification)?;
+            if !dry_run {
+                predictions.store(&email.id, &classification)?;
+            }
         }
 
-        predictions.save()?;
+        if !dry_run {
+            predictions.save()?;
+        } else {
+            println!("\n[dry-run] Would save predictions");
+        }
         Ok(())
     }
 
@@ -174,7 +193,7 @@ mod commands {
         Ok(())
     }
 
-    pub async fn labels_cleanup() -> Result<()> {
+    pub async fn labels_cleanup(dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
         let mut label_manager = LabelManager::load()?;
         let mut profile = Profile::load()?;
@@ -183,98 +202,125 @@ mod commands {
         if removed.is_empty() {
             println!("No labels to clean up.");
         } else {
-            println!("Removed {} labels:", removed.len());
+            if dry_run {
+                println!("Would remove {} labels:", removed.len());
+            } else {
+                println!("Removed {} labels:", removed.len());
+            }
             for label in removed {
                 println!("  - {}", label);
             }
-            label_manager.save()?;
-            profile.save()?;
+            if !dry_run {
+                label_manager.save()?;
+                profile.save()?;
+            }
         }
 
         Ok(())
     }
 
-    pub async fn spam(id: &str) -> Result<()> {
+    pub async fn spam(id: &str, dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
 
-        // Execute action
-        provider.mark_spam(id).await?;
-
-        // Get email details for learning
+        // Get email details first
         let email = provider.get_message(id).await?;
-        println!("Marked as spam: \"{}\"", email.subject);
 
-        // Learn from this action
-        let learning = LearningEngine::new(&provider, &mut profile, &predictions);
-        if let Some(update) = learning.learn_from_action(id, "spam", &email).await? {
-            println!("\n📝 Profile updated:");
-            println!("{}", update);
-            profile.save()?;
+        if dry_run {
+            println!("Would mark as spam: \"{}\"", email.subject);
+            println!("  From: {}", email.from);
+        } else {
+            // Execute action
+            provider.mark_spam(id).await?;
+            println!("Marked as spam: \"{}\"", email.subject);
+
+            // Learn from this action
+            let learning = LearningEngine::new(&provider, &mut profile, &predictions);
+            if let Some(update) = learning.learn_from_action(id, "spam", &email).await? {
+                println!("\n📝 Profile updated:");
+                println!("{}", update);
+                profile.save()?;
+            }
         }
 
         Ok(())
     }
 
-    pub async fn unspam(id: &str) -> Result<()> {
+    pub async fn unspam(id: &str, dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
 
-        // Execute action
-        provider.unspam(id).await?;
-
-        // Get email details for learning
+        // Get email details first
         let email = provider.get_message(id).await?;
-        println!("Removed from spam: \"{}\"", email.subject);
 
-        // Learn from this action
-        let learning = LearningEngine::new(&provider, &mut profile, &predictions);
-        if let Some(update) = learning.learn_from_action(id, "unspam", &email).await? {
-            println!("\n📝 Profile updated:");
-            println!("{}", update);
-            profile.save()?;
+        if dry_run {
+            println!("Would remove from spam: \"{}\"", email.subject);
+            println!("  From: {}", email.from);
+        } else {
+            // Execute action
+            provider.unspam(id).await?;
+            println!("Removed from spam: \"{}\"", email.subject);
+
+            // Learn from this action
+            let learning = LearningEngine::new(&provider, &mut profile, &predictions);
+            if let Some(update) = learning.learn_from_action(id, "unspam", &email).await? {
+                println!("\n📝 Profile updated:");
+                println!("{}", update);
+                profile.save()?;
+            }
         }
 
         Ok(())
     }
 
-    pub async fn delete(id: &str) -> Result<()> {
+    pub async fn delete(id: &str, dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
 
-        provider.trash(id).await?;
-
+        // Get email details first
         let email = provider.get_message(id).await?;
-        println!("Moved to trash: \"{}\"", email.subject);
+
+        if dry_run {
+            println!("Would move to trash: \"{}\"", email.subject);
+            println!("  From: {}", email.from);
+        } else {
+            provider.trash(id).await?;
+            println!("Moved to trash: \"{}\"", email.subject);
+        }
 
         Ok(())
     }
 
-    pub async fn label(id: &str, label: &str) -> Result<()> {
+    pub async fn label(id: &str, label: &str, dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
 
-        // Execute action
-        provider.add_label(id, label).await?;
-
-        // Get email details for learning
+        // Get email details first
         let email = provider.get_message(id).await?;
-        println!("Added label '{}' to: \"{}\"", label, email.subject);
 
-        // Learn from this action
-        let learning = LearningEngine::new(&provider, &mut profile, &predictions);
-        if let Some(update) = learning.learn_from_action(id, &format!("label:{}", label), &email).await? {
-            println!("\n📝 Profile updated:");
-            println!("{}", update);
-            profile.save()?;
+        if dry_run {
+            println!("Would add label '{}' to: \"{}\"", label, email.subject);
+            println!("  From: {}", email.from);
+        } else {
+            // Execute action
+            provider.add_label(id, label).await?;
+            println!("Added label '{}' to: \"{}\"", label, email.subject);
+
+            // Learn from this action
+            let learning = LearningEngine::new(&provider, &mut profile, &predictions);
+            if let Some(update) = learning.learn_from_action(id, &format!("label:{}", label), &email).await? {
+                println!("\n📝 Profile updated:");
+                println!("{}", update);
+                profile.save()?;
+            }
         }
 
         Ok(())
     }
 
-    pub async fn learn() -> Result<()> {
+    pub async fn learn(dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
@@ -294,10 +340,14 @@ mod commands {
                 );
             }
 
-            println!("\nUpdating profile...");
-            learning.apply_corrections(&corrections).await?;
-            profile.save()?;
-            println!("Profile updated.");
+            if dry_run {
+                println!("\n[dry-run] Would update profile with these corrections");
+            } else {
+                println!("\nUpdating profile...");
+                learning.apply_corrections(&corrections).await?;
+                profile.save()?;
+                println!("Profile updated.");
+            }
         }
 
         Ok(())
