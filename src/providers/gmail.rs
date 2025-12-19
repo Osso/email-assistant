@@ -91,6 +91,10 @@ impl EmailProvider for GmailProvider {
         self.client.unspam(id).await
     }
 
+    async fn archive(&self, id: &str) -> Result<()> {
+        self.client.archive(id).await
+    }
+
     async fn trash(&self, id: &str) -> Result<()> {
         self.client.trash(id).await
     }

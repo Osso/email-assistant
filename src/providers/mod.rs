@@ -29,5 +29,6 @@ pub trait EmailProvider: Send + Sync {
     async fn remove_label(&self, id: &str, label: &str) -> Result<()>;
     async fn mark_spam(&self, id: &str) -> Result<()>;
     async fn unspam(&self, id: &str) -> Result<()>;
+    async fn archive(&self, id: &str) -> Result<()>;
     async fn trash(&self, id: &str) -> Result<()>;
 }

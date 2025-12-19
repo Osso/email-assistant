@@ -44,6 +44,11 @@ enum Commands {
         /// Email ID
         id: String,
     },
+    /// Archive email (remove from inbox, keep in All Mail)
+    Archive {
+        /// Email ID
+        id: String,
+    },
     /// Move email to trash
     Delete {
         /// Email ID
@@ -94,6 +99,9 @@ async fn main() -> Result<()> {
         }
         Commands::Unspam { id } => {
             commands::unspam(&id, dry_run).await?;
+        }
+        Commands::Archive { id } => {
+            commands::archive(&id, dry_run).await?;
         }
         Commands::Delete { id } => {
             commands::delete(&id, dry_run).await?;
@@ -270,6 +278,23 @@ mod commands {
                 println!("{}", update);
                 profile.save()?;
             }
+        }
+
+        Ok(())
+    }
+
+    pub async fn archive(id: &str, dry_run: bool) -> Result<()> {
+        let provider = GmailProvider::new().await?;
+
+        // Get email details first
+        let email = provider.get_message(id).await?;
+
+        if dry_run {
+            println!("Would archive: \"{}\"", email.subject);
+            println!("  From: {}", email.from);
+        } else {
+            provider.archive(id).await?;
+            println!("Archived: \"{}\"", email.subject);
         }
 
         Ok(())
