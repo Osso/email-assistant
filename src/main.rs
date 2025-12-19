@@ -144,8 +144,17 @@ mod commands {
             let result = learning.detect_corrections().await?;
 
             if !result.corrections.is_empty() {
-                println!("Found {} corrections, updating profile...", result.corrections.len());
+                println!("Found {} corrections:", result.corrections.len());
+                for correction in &result.corrections {
+                    println!("  - {} | {} (predicted: {:?}, actual: {:?})",
+                        correction.email_id,
+                        correction.subject.chars().take(40).collect::<String>(),
+                        correction.predicted_labels,
+                        correction.actual_labels
+                    );
+                }
                 if !dry_run {
+                    println!("Updating profile...");
                     learning.apply_corrections(&result.corrections).await?;
                     profile.save()?;
                 } else {

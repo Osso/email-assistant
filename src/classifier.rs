@@ -88,7 +88,21 @@ Respond with JSON only:
         // Filter out internal labels that shouldn't be suggested by LLM
         classification.labels.retain(|l| !l.eq_ignore_ascii_case("Classified"));
 
+        // Capitalize first letter of each label for consistency
+        classification.labels = classification.labels
+            .into_iter()
+            .map(|l| capitalize_first(&l))
+            .collect();
+
         Ok(classification)
+    }
+}
+
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(c) => c.to_uppercase().chain(chars).collect(),
     }
 }
 
