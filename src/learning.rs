@@ -41,26 +41,39 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             };
 
             let actual_spam = email.labels.iter().any(|l| l == "SPAM");
-            let mut actual_labels: Vec<String> = email
-                .labels
-                .iter()
-                .filter(|l| !is_system_label(l))
+            let spam_mismatch = prediction.is_spam != actual_spam;
+
+            // Check if our predicted labels are still on the email (case-insensitive)
+            let removed_labels: Vec<_> = prediction.labels.iter()
+                .filter(|pred_label| {
+                    !email.labels.iter().any(|email_label|
+                        email_label.eq_ignore_ascii_case(pred_label)
+                    )
+                })
                 .cloned()
                 .collect();
-            actual_labels.sort();
 
-            let mut predicted_labels = prediction.labels.clone();
-            predicted_labels.sort();
+            // Check for new user-added labels (excluding system labels, case-insensitive)
+            let added_labels: Vec<_> = email.labels.iter()
+                .filter(|email_label| {
+                    !is_system_label(email_label) &&
+                    !prediction.labels.iter().any(|pred_label|
+                        pred_label.eq_ignore_ascii_case(email_label)
+                    )
+                })
+                .cloned()
+                .collect();
 
-            // Check for mismatches
-            let spam_mismatch = prediction.is_spam != actual_spam;
-            let labels_mismatch = predicted_labels != actual_labels;
+            let label_mismatch = !removed_labels.is_empty() || !added_labels.is_empty();
 
-            if spam_mismatch || labels_mismatch {
+            if spam_mismatch || label_mismatch {
                 corrections.push(Correction {
                     email_id: prediction.email_id.clone(),
                     predicted_labels: prediction.labels.clone(),
-                    actual_labels: email.labels.clone(),
+                    actual_labels: email.labels.iter()
+                        .filter(|l| !is_system_label(l))
+                        .cloned()
+                        .collect(),
                     predicted_spam: prediction.is_spam,
                     actual_spam,
                 });

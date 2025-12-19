@@ -1,9 +1,11 @@
 use super::{Email, EmailProvider, Label};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use std::collections::HashMap;
 
 pub struct GmailProvider {
     client: gmail::Client,
+    label_id_to_name: HashMap<String, String>,
 }
 
 impl GmailProvider {
@@ -23,17 +25,50 @@ impl GmailProvider {
         let client = gmail::Client::new(&tokens.access_token);
 
         // Test if token works
-        match client.list_messages(None, "INBOX", 1).await {
-            Ok(_) => Ok(Self { client }),
+        let client = match client.list_messages(None, "INBOX", 1).await {
+            Ok(_) => client,
             Err(_) => {
                 // Token expired, try refresh
                 let new_tokens =
                     gmail::auth::refresh_token(&client_id, &client_secret, &tokens.refresh_token)
                         .await?;
-                Ok(Self {
-                    client: gmail::Client::new(&new_tokens.access_token),
-                })
+                gmail::Client::new(&new_tokens.access_token)
             }
+        };
+
+        // Build label ID to name mapping
+        let mut label_id_to_name = HashMap::new();
+        if let Ok(labels) = client.list_labels().await {
+            if let Some(label_list) = labels.labels {
+                for label in label_list {
+                    label_id_to_name.insert(label.id, label.name);
+                }
+            }
+        }
+
+        Ok(Self { client, label_id_to_name })
+    }
+
+    fn resolve_label_ids(&self, label_ids: Vec<String>) -> Vec<String> {
+        label_ids.into_iter()
+            .map(|id| {
+                self.label_id_to_name.get(&id)
+                    .cloned()
+                    .unwrap_or(id)
+            })
+            .collect()
+    }
+
+    fn message_to_email(&self, msg: gmail::Message) -> Email {
+        let label_ids = msg.label_ids.clone().unwrap_or_default();
+        Email {
+            id: msg.id.clone(),
+            from: msg.get_header("From").unwrap_or("").to_string(),
+            to: msg.get_header("To").unwrap_or("").to_string(),
+            subject: msg.get_header("Subject").unwrap_or("(no subject)").to_string(),
+            body: msg.get_body_text().unwrap_or_default(),
+            date: msg.get_header("Date").unwrap_or("").to_string(),
+            labels: self.resolve_label_ids(label_ids),
         }
     }
 }
@@ -47,7 +82,7 @@ impl EmailProvider for GmailProvider {
         if let Some(messages) = list.messages {
             for msg_ref in messages {
                 let msg = self.client.get_message(&msg_ref.id).await?;
-                emails.push(message_to_email(msg));
+                emails.push(self.message_to_email(msg));
             }
         }
 
@@ -56,7 +91,7 @@ impl EmailProvider for GmailProvider {
 
     async fn get_message(&self, id: &str) -> Result<Email> {
         let msg = self.client.get_message(id).await?;
-        Ok(message_to_email(msg))
+        Ok(self.message_to_email(msg))
     }
 
     async fn list_labels(&self) -> Result<Vec<Label>> {
@@ -97,17 +132,5 @@ impl EmailProvider for GmailProvider {
 
     async fn trash(&self, id: &str) -> Result<()> {
         self.client.trash(id).await
-    }
-}
-
-fn message_to_email(msg: gmail::Message) -> Email {
-    Email {
-        id: msg.id.clone(),
-        from: msg.get_header("From").unwrap_or("").to_string(),
-        to: msg.get_header("To").unwrap_or("").to_string(),
-        subject: msg.get_header("Subject").unwrap_or("(no subject)").to_string(),
-        body: msg.get_body_text().unwrap_or_default(),
-        date: msg.get_header("Date").unwrap_or("").to_string(),
-        labels: msg.label_ids.unwrap_or_default(),
     }
 }

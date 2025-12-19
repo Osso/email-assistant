@@ -162,8 +162,8 @@ mod commands {
 
             let classification = classifier.classify(&email).await?;
 
-            // Build status indicators from Gmail labels
-            let status = build_status_indicators(&email.labels);
+            // Build status indicators
+            let status = build_status_indicators(&email.labels, classification.is_important);
 
             println!(
                 "{} {} | {} | {:?}",
@@ -174,7 +174,15 @@ mod commands {
             );
 
             if !dry_run {
+                // Apply predicted labels to Gmail so user can recategorize
+                for label in &classification.labels {
+                    if let Err(e) = provider.add_label(&email.id, label).await {
+                        eprintln!("  Warning: couldn't apply label '{}': {}", label, e);
+                    }
+                }
                 predictions.store(&email.id, &classification)?;
+            } else {
+                println!("  [dry-run] Would apply labels: {:?}", classification.labels);
             }
         }
 
@@ -389,17 +397,16 @@ mod commands {
         Ok(())
     }
 
-    /// Build status indicators from Gmail labels
-    /// Returns a string like "[*I]" for starred+important, "[ A]" for archived
-    fn build_status_indicators(labels: &[String]) -> String {
+    /// Build status indicators from Gmail labels and classifier
+    /// Returns a string like "[● *🔥]" for unread+starred+important
+    fn build_status_indicators(labels: &[String], is_important: bool) -> String {
         let in_inbox = labels.iter().any(|l| l == "INBOX");
         let is_starred = labels.iter().any(|l| l == "STARRED");
-        let is_important = labels.iter().any(|l| l == "IMPORTANT");
         let is_unread = labels.iter().any(|l| l == "UNREAD");
 
-        let c1 = if is_unread { '●' } else { ' ' };
-        let c2 = if is_starred { '*' } else if !in_inbox { 'A' } else { ' ' };
-        let c3 = if is_important { 'I' } else { ' ' };
+        let c1 = if is_unread { "●" } else { " " };
+        let c2 = if is_starred { "*" } else if !in_inbox { "A" } else { " " };
+        let c3 = if is_important { "🔥" } else { " " };
 
         format!("[{}{}{}]", c1, c2, c3)
     }
