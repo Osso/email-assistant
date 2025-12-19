@@ -32,7 +32,7 @@ impl<'a> Classifier<'a> {
         let body_preview: String = email.body.chars().take(1000).collect();
 
         let prompt = format!(
-            r#"You are an email classifier. Use the profile rules below to classify this email.
+            r#"You are an email classifier. Analyze this email and assign appropriate labels.
 
 <profile>
 {}
@@ -44,8 +44,13 @@ Subject: {}
 Body: {}
 </email>
 
-Respond with JSON only (no markdown, no explanation):
-{{"is_spam": false, "is_important": false, "labels": [], "confidence": 0.8}}"#,
+Classify this email:
+- is_spam: true if promotional/unwanted, false otherwise
+- is_important: true if requires attention or action
+- labels: assign 1-3 descriptive labels (e.g., "receipts", "newsletters", "work", "personal", "shipping", "accounts", "social")
+
+Respond with JSON only:
+{{"is_spam": false, "is_important": false, "labels": ["example"], "confidence": 0.8}}"#,
             self.profile.content(),
             email.from,
             email.subject,
