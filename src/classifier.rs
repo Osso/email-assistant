@@ -49,7 +49,7 @@ Body: {}
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
 - is_important: true if requires attention or action
-- labels: assign 1-3 descriptive labels. Use "promotional" for marketing/sales emails. Other examples: "receipts", "newsletters", "promotional", "work", "personal", "shipping", "accounts", "social", "security"
+- labels: assign 1-3 descriptive labels. Examples: "receipts", "newsletters", "promotional", "work", "personal", "shipping", "social", "security", "finance", "travel". Use "accounts" ONLY for registration, password reset, or account security emails - not for service notifications
 - archive: true if email doesn't need to stay in inbox (promotional, newsletters, automated notifications)
 
 Respond with JSON only:
