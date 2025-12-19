@@ -9,6 +9,10 @@ use std::fs;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Prediction {
     pub email_id: String,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub subject: String,
     pub is_spam: bool,
     pub is_important: bool,
     pub labels: Vec<String>,
@@ -50,11 +54,13 @@ impl PredictionStore {
         self.predictions.get(email_id)
     }
 
-    pub fn store(&mut self, email_id: &str, classification: &Classification) -> Result<()> {
+    pub fn store(&mut self, email_id: &str, from: &str, subject: &str, classification: &Classification) -> Result<()> {
         self.predictions.insert(
             email_id.to_string(),
             Prediction {
                 email_id: email_id.to_string(),
+                from: from.to_string(),
+                subject: subject.to_string(),
                 is_spam: classification.is_spam,
                 is_important: classification.is_important,
                 labels: classification.labels.clone(),

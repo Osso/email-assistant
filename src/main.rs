@@ -139,38 +139,48 @@ mod commands {
         let _label_manager = LabelManager::load()?;
 
         // Step 1: Learn from corrections first
-        let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
-        let corrections = learning.detect_corrections().await?;
-        if !corrections.is_empty() {
-            println!("Found {} corrections, updating profile...", corrections.len());
-            if !dry_run {
-                learning.apply_corrections(&corrections).await?;
-                profile.save()?;
-            } else {
-                println!("  [dry-run] Would update profile with corrections");
+        let deleted_ids = {
+            let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
+            let result = learning.detect_corrections().await?;
+
+            if !result.corrections.is_empty() {
+                println!("Found {} corrections, updating profile...", result.corrections.len());
+                if !dry_run {
+                    learning.apply_corrections(&result.corrections).await?;
+                    profile.save()?;
+                } else {
+                    println!("  [dry-run] Would update profile with corrections");
+                }
+            }
+
+            result.deleted_ids
+        };
+
+        // Clean up predictions for deleted emails
+        if !dry_run {
+            for id in &deleted_ids {
+                predictions.remove(id);
             }
         }
 
-        // Step 2: Classify new emails
+        // Step 2: Classify new emails (exclude already classified)
         let classifier = Classifier::new(&profile);
-        let emails = provider.list_messages(max, "INBOX").await?;
+        let emails = provider.list_messages(max, "INBOX", Some("-label:Classified")).await?;
 
         for email in emails {
-            if predictions.has_prediction(&email.id) {
-                continue; // Already classified
-            }
-
             let classification = classifier.classify(&email).await?;
 
             // Build status indicators
             let status = build_status_indicators(&email.labels, classification.is_important);
+            let archive_indicator = if classification.archive { " → archive" } else { "" };
 
             println!(
-                "{} {} | {} | {:?}",
+                "{} {} | {} | {:?}{}",
                 email.id,
                 status,
                 email.subject.chars().take(50).collect::<String>(),
-                classification.labels
+                classification.labels,
+                archive_indicator
             );
 
             if !dry_run {
@@ -180,9 +190,22 @@ mod commands {
                         eprintln!("  Warning: couldn't apply label '{}': {}", label, e);
                     }
                 }
-                predictions.store(&email.id, &classification)?;
+                // Mark as classified so it won't be processed again
+                if let Err(e) = provider.add_label(&email.id, "Classified").await {
+                    eprintln!("  Warning: couldn't apply Classified label: {}", e);
+                }
+                // Auto-archive if suggested
+                if classification.archive {
+                    if let Err(e) = provider.archive(&email.id).await {
+                        eprintln!("  Warning: couldn't archive: {}", e);
+                    }
+                }
+                predictions.store(&email.id, &email.from, &email.subject, &classification)?;
             } else {
                 println!("  [dry-run] Would apply labels: {:?}", classification.labels);
+                if classification.archive {
+                    println!("  [dry-run] Would archive");
+                }
             }
         }
 
@@ -361,30 +384,45 @@ mod commands {
     pub async fn learn(dry_run: bool) -> Result<()> {
         let provider = GmailProvider::new().await?;
         let mut profile = Profile::load()?;
-        let predictions = PredictionStore::load()?;
+        let mut predictions = PredictionStore::load()?;
 
-        let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
-        let corrections = learning.detect_corrections().await?;
+        let deleted_ids = {
+            let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
+            let result = learning.detect_corrections().await?;
 
-        if corrections.is_empty() {
-            println!("No corrections found.");
-        } else {
-            println!("Found {} corrections:", corrections.len());
-            for correction in &corrections {
-                println!("  - {} (predicted: {:?}, actual: {:?})",
-                    correction.email_id,
-                    correction.predicted_labels,
-                    correction.actual_labels
-                );
+            if result.corrections.is_empty() {
+                println!("No corrections found.");
+            } else {
+                println!("Found {} corrections:", result.corrections.len());
+                for correction in &result.corrections {
+                    println!("  - {} (predicted: {:?}, actual: {:?})",
+                        correction.email_id,
+                        correction.predicted_labels,
+                        correction.actual_labels
+                    );
+                }
+
+                if dry_run {
+                    println!("\n[dry-run] Would update profile with these corrections");
+                } else {
+                    println!("\nUpdating profile...");
+                    learning.apply_corrections(&result.corrections).await?;
+                    profile.save()?;
+                    println!("Profile updated.");
+                }
             }
 
-            if dry_run {
-                println!("\n[dry-run] Would update profile with these corrections");
-            } else {
-                println!("\nUpdating profile...");
-                learning.apply_corrections(&corrections).await?;
-                profile.save()?;
-                println!("Profile updated.");
+            result.deleted_ids
+        };
+
+        // Clean up predictions for deleted emails
+        if !deleted_ids.is_empty() {
+            println!("Cleaned up {} deleted emails from predictions.", deleted_ids.len());
+            if !dry_run {
+                for id in &deleted_ids {
+                    predictions.remove(id);
+                }
+                predictions.save()?;
             }
         }
 

@@ -9,6 +9,8 @@ use tokio::process::Command;
 pub struct Classification {
     pub is_spam: bool,
     pub is_important: bool,
+    #[serde(default)]
+    pub archive: bool,
     pub labels: Vec<String>,
     pub confidence: f32,
 }
@@ -45,12 +47,13 @@ Body: {}
 </email>
 
 Classify this email:
-- is_spam: true if promotional/unwanted, false otherwise
+- is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
 - is_important: true if requires attention or action
-- labels: assign 1-3 descriptive labels (e.g., "receipts", "newsletters", "work", "personal", "shipping", "accounts", "social")
+- labels: assign 1-3 descriptive labels. Use "promotional" for marketing/sales emails. Other examples: "receipts", "newsletters", "promotional", "work", "personal", "shipping", "accounts", "social", "security"
+- archive: true if email doesn't need to stay in inbox (promotional, newsletters, automated notifications)
 
 Respond with JSON only:
-{{"is_spam": false, "is_important": false, "labels": ["example"], "confidence": 0.8}}"#,
+{{"is_spam": false, "is_important": false, "labels": ["example"], "archive": false, "confidence": 0.8}}"#,
             self.profile.content(),
             email.from,
             email.subject,
@@ -79,8 +82,11 @@ Respond with JSON only:
         // Extract the classification JSON from the result text
         let json_str = extract_json(&wrapper.result)?;
 
-        let classification: Classification =
+        let mut classification: Classification =
             serde_json::from_str(&json_str).context("Failed to parse classification response")?;
+
+        // Filter out internal labels that shouldn't be suggested by LLM
+        classification.labels.retain(|l| !l.eq_ignore_ascii_case("Classified"));
 
         Ok(classification)
     }

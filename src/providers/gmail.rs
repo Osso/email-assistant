@@ -75,8 +75,8 @@ impl GmailProvider {
 
 #[async_trait]
 impl EmailProvider for GmailProvider {
-    async fn list_messages(&self, max: u32, label: &str) -> Result<Vec<Email>> {
-        let list = self.client.list_messages(None, label, max).await?;
+    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>> {
+        let list = self.client.list_messages(query, label, max).await?;
 
         let mut emails = Vec::new();
         if let Some(messages) = list.messages {

@@ -9,10 +9,18 @@ use tokio::process::Command;
 #[derive(Debug)]
 pub struct Correction {
     pub email_id: String,
+    pub from: String,
+    pub subject: String,
     pub predicted_labels: Vec<String>,
     pub actual_labels: Vec<String>,
     pub predicted_spam: bool,
     pub actual_spam: bool,
+}
+
+#[derive(Debug, Default)]
+pub struct LearningResult {
+    pub corrections: Vec<Correction>,
+    pub deleted_ids: Vec<String>,
 }
 
 pub struct LearningEngine<'a, P: EmailProvider> {
@@ -30,14 +38,18 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
         }
     }
 
-    pub async fn detect_corrections(&self) -> Result<Vec<Correction>> {
-        let mut corrections = Vec::new();
+    pub async fn detect_corrections(&self) -> Result<LearningResult> {
+        let mut result = LearningResult::default();
 
         for prediction in self.predictions.all_predictions() {
             // Fetch current state of the email
             let email = match self.provider.get_message(&prediction.email_id).await {
                 Ok(e) => e,
-                Err(_) => continue, // Email might be deleted
+                Err(_) => {
+                    // Email deleted - just clean up prediction, don't learn
+                    result.deleted_ids.push(prediction.email_id.clone());
+                    continue;
+                }
             };
 
             let actual_spam = email.labels.iter().any(|l| l == "SPAM");
@@ -67,8 +79,10 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             let label_mismatch = !removed_labels.is_empty() || !added_labels.is_empty();
 
             if spam_mismatch || label_mismatch {
-                corrections.push(Correction {
+                result.corrections.push(Correction {
                     email_id: prediction.email_id.clone(),
+                    from: prediction.from.clone(),
+                    subject: prediction.subject.clone(),
                     predicted_labels: prediction.labels.clone(),
                     actual_labels: email.labels.iter()
                         .filter(|l| !is_system_label(l))
@@ -80,7 +94,7 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             }
         }
 
-        Ok(corrections)
+        Ok(result)
     }
 
     pub async fn apply_corrections(&mut self, corrections: &[Correction]) -> Result<()> {
@@ -238,7 +252,8 @@ If no meaningful pattern can be extracted, respond with just: NO_UPDATE_NEEDED"#
 }
 
 fn is_system_label(label: &str) -> bool {
-    matches!(
+    // Gmail system labels
+    if matches!(
         label,
         "INBOX"
             | "SENT"
@@ -253,7 +268,11 @@ fn is_system_label(label: &str) -> bool {
             | "CATEGORY_PROMOTIONS"
             | "CATEGORY_UPDATES"
             | "CATEGORY_FORUMS"
-    )
+    ) {
+        return true;
+    }
+    // Internal labels we use for tracking
+    label.eq_ignore_ascii_case("Classified")
 }
 
 fn extract_profile_update(response: &str) -> Option<String> {

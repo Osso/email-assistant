@@ -96,7 +96,7 @@ impl LabelManager {
 
         for label_name in llm_labels {
             // Query provider for emails with this label
-            let emails = provider.list_messages(1, &label_name).await;
+            let emails = provider.list_messages(1, &label_name, None).await;
 
             match emails {
                 Ok(emails) if emails.is_empty() => {
