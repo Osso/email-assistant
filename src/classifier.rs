@@ -52,7 +52,7 @@ Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
 - is_important: true if requires attention or action
 - labels: assign 1-3 descriptive labels. Examples: "Receipts", "Newsletters", "Promotional", "Work", "Personal", "Shipping", "Social", "Security", "Finance", "Travel". Use "Accounts" ONLY for registration, password reset emails - not for service notifications
-- archive: true if email doesn't need to stay in inbox (promotional, newsletters, automated notifications)
+- archive: true if email doesn't need to stay in inbox (promotional, newsletters, automated notifications, receipts under $500)
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
