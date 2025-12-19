@@ -13,6 +13,12 @@ pub struct Classification {
     pub confidence: f32,
 }
 
+/// Response wrapper from `claude --output-format json`
+#[derive(Debug, Deserialize)]
+struct ClaudeResponse {
+    result: String,
+}
+
 pub struct Classifier<'a> {
     profile: &'a Profile,
 }
@@ -61,9 +67,12 @@ Respond with JSON only (no markdown, no explanation):
 
         let stdout = String::from_utf8_lossy(&output.stdout);
 
-        // Parse the JSON response
-        // Claude might wrap the response, try to extract JSON
-        let json_str = extract_json(&stdout)?;
+        // Parse the wrapper JSON from claude --output-format json
+        let wrapper: ClaudeResponse = serde_json::from_str(&stdout)
+            .context("Failed to parse claude response wrapper")?;
+
+        // Extract the classification JSON from the result text
+        let json_str = extract_json(&wrapper.result)?;
 
         let classification: Classification =
             serde_json::from_str(&json_str).context("Failed to parse classification response")?;
