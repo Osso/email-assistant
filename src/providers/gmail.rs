@@ -108,6 +108,6 @@ fn message_to_email(msg: gmail::Message) -> Email {
         subject: msg.get_header("Subject").unwrap_or("(no subject)").to_string(),
         body: msg.get_body_text().unwrap_or_default(),
         date: msg.get_header("Date").unwrap_or("").to_string(),
-        labels: Vec::new(), // TODO: Extract labels from message
+        labels: msg.label_ids.unwrap_or_default(),
     }
 }

@@ -161,9 +161,14 @@ mod commands {
             }
 
             let classification = classifier.classify(&email).await?;
+
+            // Build status indicators from Gmail labels
+            let status = build_status_indicators(&email.labels);
+
             println!(
-                "{} | {} | {:?}",
+                "{} {} | {} | {:?}",
                 email.id,
+                status,
                 email.subject.chars().take(50).collect::<String>(),
                 classification.labels
             );
@@ -382,5 +387,20 @@ mod commands {
         let profile = Profile::load()?;
         println!("{}", profile.content());
         Ok(())
+    }
+
+    /// Build status indicators from Gmail labels
+    /// Returns a string like "[*I]" for starred+important, "[ A]" for archived
+    fn build_status_indicators(labels: &[String]) -> String {
+        let in_inbox = labels.iter().any(|l| l == "INBOX");
+        let is_starred = labels.iter().any(|l| l == "STARRED");
+        let is_important = labels.iter().any(|l| l == "IMPORTANT");
+        let is_unread = labels.iter().any(|l| l == "UNREAD");
+
+        let c1 = if is_unread { '●' } else { ' ' };
+        let c2 = if is_starred { '*' } else if !in_inbox { 'A' } else { ' ' };
+        let c3 = if is_important { 'I' } else { ' ' };
+
+        format!("[{}{}{}]", c1, c2, c3)
     }
 }
