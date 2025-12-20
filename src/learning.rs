@@ -179,7 +179,7 @@ If no update is needed (the profile already covers this case), respond with just
         let output = timeout(
             Duration::from_secs(60),
             Command::new("claude")
-                .args(["-p", &prompt, "--model", "haiku"])
+                .args(["-p", &prompt, "--model", "haiku", "--tools", "", "--no-session-persistence"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output()
