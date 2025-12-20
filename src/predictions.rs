@@ -45,14 +45,6 @@ impl Prediction {
     pub fn needs_reply(&self) -> bool {
         self.action.iter().any(|a| a == "Needs-Reply")
     }
-
-    pub fn is_awaiting_reply(&self) -> bool {
-        self.action.iter().any(|a| a == "Awaiting-Reply")
-    }
-
-    pub fn is_fyi(&self) -> bool {
-        self.action.iter().any(|a| a == "FYI")
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -79,10 +71,6 @@ impl PredictionStore {
         let content = serde_json::to_string_pretty(self)?;
         fs::write(config::predictions_path(), content)?;
         Ok(())
-    }
-
-    pub fn has_prediction(&self, email_id: &str) -> bool {
-        self.predictions.contains_key(email_id)
     }
 
     pub fn get(&self, email_id: &str) -> Option<&Prediction> {

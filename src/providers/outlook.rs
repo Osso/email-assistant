@@ -10,14 +10,11 @@ use tokio::process::Command;
 struct OutlookMessage {
     id: String,
     from: String,
-    #[serde(default)]
-    to: String,
     subject: String,
     #[serde(default)]
     body: String,
     #[serde(default)]
     snippet: String,
-    date: String,
     #[serde(default)]
     categories: Vec<String>,
     #[serde(default)]
@@ -77,10 +74,8 @@ impl OutlookProvider {
         Email {
             id: msg.id,
             from: msg.from,
-            to: msg.to,
             subject: msg.subject,
             body,
-            date: msg.date,
             labels,
         }
     }
@@ -230,23 +225,6 @@ impl EmailProvider for OutlookProvider {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("outlook label failed: {}", stderr);
-        }
-
-        Ok(())
-    }
-
-    async fn remove_label(&self, id: &str, label: &str) -> Result<()> {
-        let output = Command::new("outlook")
-            .args(["unlabel", id, label])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook unlabel")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook unlabel failed: {}", stderr);
         }
 
         Ok(())

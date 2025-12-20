@@ -8,10 +8,8 @@ use async_trait::async_trait;
 pub struct Email {
     pub id: String,
     pub from: String,
-    pub to: String,
     pub subject: String,
     pub body: String,
-    pub date: String,
     pub labels: Vec<String>,
 }
 
@@ -27,7 +25,6 @@ pub trait EmailProvider: Send + Sync {
     async fn get_message(&self, id: &str) -> Result<Email>;
     async fn list_labels(&self) -> Result<Vec<Label>>;
     async fn add_label(&self, id: &str, label: &str) -> Result<()>;
-    async fn remove_label(&self, id: &str, label: &str) -> Result<()>;
     async fn mark_spam(&self, id: &str) -> Result<()>;
     async fn unspam(&self, id: &str) -> Result<()>;
     async fn archive(&self, id: &str) -> Result<()>;
@@ -47,9 +44,6 @@ impl EmailProvider for Box<dyn EmailProvider> {
     }
     async fn add_label(&self, id: &str, label: &str) -> Result<()> {
         (**self).add_label(id, label).await
-    }
-    async fn remove_label(&self, id: &str, label: &str) -> Result<()> {
-        (**self).remove_label(id, label).await
     }
     async fn mark_spam(&self, id: &str) -> Result<()> {
         (**self).mark_spam(id).await

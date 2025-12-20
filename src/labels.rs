@@ -46,37 +46,12 @@ impl LabelManager {
         Ok(())
     }
 
-    pub fn add_label(&mut self, name: &str, source: LabelSource) {
-        if !self.labels.contains_key(name) {
-            self.labels.insert(
-                name.to_string(),
-                LabelInfo {
-                    name: name.to_string(),
-                    source,
-                    email_count: 0,
-                },
-            );
-        }
-    }
-
     pub fn llm_labels(&self) -> Vec<&str> {
         self.labels
             .values()
             .filter(|l| l.source == LabelSource::Llm)
             .map(|l| l.name.as_str())
             .collect()
-    }
-
-    pub fn all_labels(&self) -> Vec<&LabelInfo> {
-        self.labels.values().collect()
-    }
-
-    pub async fn sync_provider_labels<P: EmailProvider>(&mut self, provider: &P) -> Result<()> {
-        let labels = provider.list_labels().await?;
-        for label in labels {
-            self.add_label(&label.name, LabelSource::Provider);
-        }
-        Ok(())
     }
 
     pub async fn cleanup<P: EmailProvider>(

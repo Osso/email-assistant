@@ -30,14 +30,6 @@ pub fn labels_path() -> PathBuf {
     config_dir().join("labels.json")
 }
 
-fn ensure_config_dir() -> Result<PathBuf> {
-    let dir = config_dir();
-    if !dir.exists() {
-        fs::create_dir_all(&dir)?;
-    }
-    Ok(dir)
-}
-
 impl Config {
     pub fn load() -> Result<Self> {
         let path = config_path();
@@ -47,12 +39,5 @@ impl Config {
         } else {
             Ok(Config::default())
         }
-    }
-
-    pub fn save(&self) -> Result<()> {
-        ensure_config_dir()?;
-        let content = serde_json::to_string_pretty(self)?;
-        fs::write(config_path(), content)?;
-        Ok(())
     }
 }

@@ -64,10 +64,8 @@ impl GmailProvider {
         Email {
             id: msg.id.clone(),
             from: msg.get_header("From").unwrap_or("").to_string(),
-            to: msg.get_header("To").unwrap_or("").to_string(),
             subject: msg.get_header("Subject").unwrap_or("(no subject)").to_string(),
             body: msg.get_body_text().unwrap_or_default(),
-            date: msg.get_header("Date").unwrap_or("").to_string(),
             labels: self.resolve_label_ids(label_ids),
         }
     }
@@ -112,10 +110,6 @@ impl EmailProvider for GmailProvider {
 
     async fn add_label(&self, id: &str, label: &str) -> Result<()> {
         self.client.add_label(id, label).await
-    }
-
-    async fn remove_label(&self, id: &str, label: &str) -> Result<()> {
-        self.client.remove_label(id, label).await
     }
 
     async fn mark_spam(&self, id: &str) -> Result<()> {
