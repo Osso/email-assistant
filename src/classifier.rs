@@ -61,7 +61,7 @@ Body: {}
 
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
-- theme: 1-2 labels describing what email is about. Examples: "Receipts", "Bills", "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates"
+- theme: 1-2 labels describing what email is about. Examples: "Receipts", "Bills", "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account"
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
   - "Promotional" - ads, sales, marketing from companies (auto-archive)
