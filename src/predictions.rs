@@ -45,6 +45,10 @@ impl Prediction {
     pub fn needs_reply(&self) -> bool {
         self.action.iter().any(|a| a == "Needs-Reply")
     }
+
+    pub fn is_watching(&self) -> bool {
+        self.action.iter().any(|a| a == "Watching")
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

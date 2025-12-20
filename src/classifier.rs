@@ -68,7 +68,8 @@ Classify this email:
   - "Important" - requires your attention
   - "Urgent" - time-sensitive, needs immediate attention (security alerts are always Urgent)
   - "Follow-Up" - you sent something and are waiting for response
-- archive: true if email doesn't need to stay in inbox (newsletters, promotional, automated notifications, receipts under $500)
+  - "Watching" - group thread/discussion, no action needed from you (CC'd, FYI, team updates)
+- archive: true if email doesn't need to stay in inbox (newsletters, promotional, automated notifications, receipts under $500, Watching threads)
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
