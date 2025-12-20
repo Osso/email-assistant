@@ -65,12 +65,12 @@ Classify this email:
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
   - "Promotional" - ads, sales, marketing from companies (auto-archive)
-  - "Needs-Reply" - expects a response from you (questions, requests, invitations)
-  - "Important" - requires your attention
+  - "Needs-Reply" - expects a response from you (questions, requests, invitations). Archive unless reply needed today/tomorrow
+  - "Important" - requires your attention today
   - "Urgent" - time-sensitive, needs immediate attention (security alerts are always Urgent)
   - "No-Reply" - you sent something and are waiting for response, no action needed now (auto-archive)
   - "FYI" - group thread/discussion, you're CC'd or just informed (auto-archive)
-- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, No-Reply, FYI, automated notifications, receipts under $500)
+- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, No-Reply, FYI, Needs-Reply without urgency, automated notifications, receipts under $500)
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
