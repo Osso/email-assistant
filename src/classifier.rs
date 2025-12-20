@@ -84,17 +84,25 @@ Respond with JSON only:
             body_preview
         );
 
-        let output = timeout(
-            Duration::from_secs(20),
-            Command::new("claude")
-                .args(["-p", &prompt, "--output-format", "json", "--model", "haiku"])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output()
-        )
-        .await
-        .context("Claude CLI timed out after 20s")?
-        .context("Failed to run claude CLI")?;
+        // Use stdin for prompt to avoid CLI arg length limits
+        let mut child = Command::new("claude")
+            .args(["-p", "-", "--output-format", "json", "--model", "haiku", "--tools", "", "--no-session-persistence"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn claude CLI")?;
+
+        // Write prompt to stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            stdin.write_all(prompt.as_bytes()).await?;
+        }
+
+        let output = timeout(Duration::from_secs(30), child.wait_with_output())
+            .await
+            .context("Claude CLI timed out after 30s")?
+            .context("Failed to run claude CLI")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

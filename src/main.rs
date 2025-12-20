@@ -32,6 +32,9 @@ enum Commands {
         /// Maximum number of emails to scan
         #[arg(short = 'n', long, default_value = "50")]
         max: u32,
+        /// Scan archived emails instead of inbox
+        #[arg(long)]
+        archived: bool,
     },
     /// List all known labels
     Labels {
@@ -92,8 +95,8 @@ async fn main() -> Result<()> {
     }
 
     match cli.command {
-        Commands::Scan { max } => {
-            commands::scan(max, dry_run, provider).await?;
+        Commands::Scan { max, archived } => {
+            commands::scan(max, dry_run, provider, archived).await?;
         }
         Commands::Labels { action } => match action {
             Some(LabelsAction::Cleanup) => {
@@ -155,7 +158,7 @@ mod commands {
         }
     }
 
-    pub async fn scan(max: u32, dry_run: bool, provider_name: &str) -> Result<()> {
+    pub async fn scan(max: u32, dry_run: bool, provider_name: &str, archived: bool) -> Result<()> {
         let _config = Config::load()?;
         let provider = create_provider(provider_name).await?;
         let mut profile = Profile::load()?;
@@ -163,11 +166,12 @@ mod commands {
         let _label_manager = LabelManager::load()?;
 
         // Step 1: Learn from corrections first
-        let deleted_ids = {
+        let (deleted_ids, had_corrections) = {
             let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
             let result = learning.detect_corrections().await?;
+            let had_corrections = !result.corrections.is_empty();
 
-            if !result.corrections.is_empty() {
+            if had_corrections {
                 println!("Found {} corrections:", result.corrections.len());
                 for correction in &result.corrections {
                     println!("  - {} | {} (predicted: {:?}, actual: {:?})",
@@ -178,16 +182,32 @@ mod commands {
                     );
                 }
                 if !dry_run {
-                    println!("Updating profile...");
-                    learning.apply_corrections(&result.corrections).await?;
-                    profile.save()?;
+                    // Batch corrections: update profile every 25 corrections
+                    const BATCH_SIZE: usize = 25;
+                    let chunks: Vec<_> = result.corrections.chunks(BATCH_SIZE).collect();
+                    for (i, chunk) in chunks.iter().enumerate() {
+                        if chunks.len() > 1 {
+                            println!("Updating profile (batch {}/{})...", i + 1, chunks.len());
+                        } else {
+                            println!("Updating profile...");
+                        }
+                        if let Err(e) = learning.apply_corrections(chunk).await {
+                            eprintln!("  Warning: profile update failed: {}", e);
+                            eprintln!("  Continuing with classification...");
+                        }
+                    }
                 } else {
                     println!("  [dry-run] Would update profile with corrections");
                 }
             }
 
-            result.deleted_ids
+            (result.deleted_ids, had_corrections)
         };
+
+        // Save profile after learning engine is dropped
+        if had_corrections && !dry_run {
+            profile.save()?;
+        }
 
         // Clean up predictions for deleted emails
         if !dry_run {
@@ -198,7 +218,8 @@ mod commands {
 
         // Step 2: Classify new emails (exclude already classified)
         let classifier = Classifier::new(&profile);
-        let emails = provider.list_messages(max, "INBOX", Some("-label:Classified")).await?;
+        let label = if archived { "" } else { "INBOX" };
+        let emails = provider.list_messages(max, label, Some("-label:Classified")).await?;
 
         for email in emails {
             let classification = classifier.classify(&email).await?;
@@ -240,8 +261,14 @@ mod commands {
                         }
                     }
                     // Mark as classified so it won't be processed again
-                    if let Err(e) = provider.add_label(&email.id, "Classified").await {
-                        eprintln!("  Warning: couldn't apply Classified label: {}", e);
+                    // Only store prediction if Classified label was successfully applied
+                    match provider.add_label(&email.id, "Classified").await {
+                        Ok(_) => {
+                            predictions.store(&email.id, &email.from, &email.subject, &classification)?;
+                        }
+                        Err(e) => {
+                            eprintln!("  Warning: couldn't apply Classified label: {}", e);
+                        }
                     }
                     // Auto-archive if suggested
                     if classification.archive {
@@ -250,7 +277,6 @@ mod commands {
                         }
                     }
                 }
-                predictions.store(&email.id, &email.from, &email.subject, &classification)?;
             } else {
                 println!("  [dry-run] Would apply labels: {:?}", all_labels);
                 if classification.delete {
@@ -438,9 +464,10 @@ mod commands {
         let mut profile = Profile::load()?;
         let mut predictions = PredictionStore::load()?;
 
-        let deleted_ids = {
+        let (deleted_ids, had_corrections) = {
             let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
             let result = learning.detect_corrections().await?;
+            let had_corrections = !result.corrections.is_empty();
 
             if result.corrections.is_empty() {
                 println!("No corrections found.");
@@ -457,15 +484,28 @@ mod commands {
                 if dry_run {
                     println!("\n[dry-run] Would update profile with these corrections");
                 } else {
-                    println!("\nUpdating profile...");
-                    learning.apply_corrections(&result.corrections).await?;
-                    profile.save()?;
-                    println!("Profile updated.");
+                    // Batch corrections: update profile every 25 corrections
+                    const BATCH_SIZE: usize = 25;
+                    let chunks: Vec<_> = result.corrections.chunks(BATCH_SIZE).collect();
+                    for (i, chunk) in chunks.iter().enumerate() {
+                        if chunks.len() > 1 {
+                            println!("\nUpdating profile (batch {}/{})...", i + 1, chunks.len());
+                        } else {
+                            println!("\nUpdating profile...");
+                        }
+                        learning.apply_corrections(chunk).await?;
+                    }
                 }
             }
 
-            result.deleted_ids
+            (result.deleted_ids, had_corrections)
         };
+
+        // Save profile after learning engine is dropped
+        if had_corrections && !dry_run {
+            profile.save()?;
+            println!("Profile updated.");
+        }
 
         // Clean up predictions for deleted emails
         if !deleted_ids.is_empty() {

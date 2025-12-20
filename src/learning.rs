@@ -4,7 +4,9 @@ use crate::providers::{Email, EmailProvider};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 #[derive(Debug)]
 pub struct Correction {
@@ -99,40 +101,37 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
     }
 
     pub async fn apply_corrections(&mut self, corrections: &[Correction]) -> Result<()> {
-        for correction in corrections {
-            let email = self.provider.get_message(&correction.email_id).await?;
-            self.learn_from_correction(&email, correction).await?;
+        if corrections.is_empty() {
+            return Ok(());
         }
-        Ok(())
-    }
 
-    async fn learn_from_correction(&mut self, email: &Email, correction: &Correction) -> Result<()> {
         let date = Utc::now().format("%Y-%m-%d").to_string();
 
-        let description = if correction.predicted_spam != correction.actual_spam {
-            if correction.actual_spam {
-                format!(
-                    "{}: User marked email as spam (from: {}, subject: {})",
-                    date, email.from, email.subject
-                )
+        // Record all corrections in the profile
+        for correction in corrections {
+            let description = if correction.predicted_spam != correction.actual_spam {
+                if correction.actual_spam {
+                    format!(
+                        "{}: User marked email as spam (from: {}, subject: {})",
+                        date, correction.from, correction.subject
+                    )
+                } else {
+                    format!(
+                        "{}: User unmarked spam (false positive, from: {}, subject: {})",
+                        date, correction.from, correction.subject
+                    )
+                }
             } else {
                 format!(
-                    "{}: User unmarked spam (false positive, from: {}, subject: {})",
-                    date, email.from, email.subject
+                    "{}: User relabeled email (from: {}, predicted: {:?}, actual: {:?})",
+                    date, correction.from, correction.predicted_labels, correction.actual_labels
                 )
-            }
-        } else {
-            format!(
-                "{}: User relabeled email (from: {}, predicted: {:?}, actual: {:?})",
-                date, email.from, correction.predicted_labels, correction.actual_labels
-            )
-        };
+            };
+            self.profile.append_correction(&description);
+        }
 
-        // Add to learned corrections
-        self.profile.append_correction(&description);
-
-        // Ask LLM to suggest profile updates
-        let update = self.get_profile_update(email, correction).await?;
+        // Batch all corrections into a single Claude call
+        let update = self.get_batched_profile_update(corrections).await?;
         if let Some(new_profile) = update {
             self.profile.update(new_profile);
         }
@@ -177,13 +176,17 @@ If no update is needed (the profile already covers this case), respond with just
             self.profile.content()
         );
 
-        let output = Command::new("claude")
-            .args(["-p", &prompt])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run claude CLI")?;
+        let output = timeout(
+            Duration::from_secs(60),
+            Command::new("claude")
+                .args(["-p", &prompt, "--model", "haiku"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+        )
+        .await
+        .context("Claude CLI timed out after 60s for action learning")?
+        .context("Failed to run claude CLI")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -201,41 +204,54 @@ If no update is needed (the profile already covers this case), respond with just
         Ok(update)
     }
 
-    async fn get_profile_update(
+    async fn get_batched_profile_update(
         &self,
-        email: &Email,
-        correction: &Correction,
+        corrections: &[Correction],
     ) -> Result<Option<String>> {
+        let corrections_text: Vec<String> = corrections.iter().map(|c| {
+            format!(
+                "- From: {}\n  Subject: {}\n  Predicted: {:?}\n  Actual: {:?}",
+                c.from, c.subject, c.predicted_labels, c.actual_labels
+            )
+        }).collect();
+
         let prompt = format!(
-            r#"The user corrected a classification. Update the profile rules to prevent this mistake in the future.
+            r#"The user corrected these email classifications. Update the profile rules to prevent these mistakes.
 
-Original prediction: is_spam={}, labels={:?}
-User's correction: is_spam={}, labels={:?}
-
-Email:
-From: {}
-Subject: {}
+Corrections:
+{}
 
 Current profile:
 {}
 
-Output the COMPLETE updated profile.md with the new rule/pattern added.
-If no meaningful pattern can be extracted, respond with just: NO_UPDATE_NEEDED"#,
-            correction.predicted_spam,
-            correction.predicted_labels,
-            correction.actual_spam,
-            correction.actual_labels,
-            email.from,
-            email.subject,
+Output the COMPLETE updated profile.md with new rules/patterns added.
+If no meaningful patterns can be extracted, respond with just: NO_UPDATE_NEEDED"#,
+            corrections_text.join("\n\n"),
             self.profile.content()
         );
 
-        let output = Command::new("claude")
-            .args(["-p", &prompt])
+        // Save prompt to file for debugging
+        let prompt_file = std::env::temp_dir().join("email-assistant-profile-prompt.txt");
+        let _ = std::fs::write(&prompt_file, &prompt);
+
+        // Use stdin for prompt to avoid CLI arg length limits
+        let mut child = Command::new("claude")
+            .args(["-p", "-", "--model", "haiku", "--tools", "", "--no-session-persistence"])
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
+            .spawn()
+            .context("Failed to spawn claude CLI")?;
+
+        // Write prompt to stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            stdin.write_all(prompt.as_bytes()).await?;
+        }
+
+        let output = timeout(Duration::from_secs(90), child.wait_with_output())
             .await
+            .context("Claude CLI timed out after 90s for profile update")?
             .context("Failed to run claude CLI")?;
 
         if !output.status.success() {
