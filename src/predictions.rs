@@ -46,8 +46,12 @@ impl Prediction {
         self.action.iter().any(|a| a == "Needs-Reply")
     }
 
-    pub fn is_watching(&self) -> bool {
-        self.action.iter().any(|a| a == "Watching")
+    pub fn is_no_reply(&self) -> bool {
+        self.action.iter().any(|a| a == "No-Reply")
+    }
+
+    pub fn is_fyi(&self) -> bool {
+        self.action.iter().any(|a| a == "FYI")
     }
 }
 
