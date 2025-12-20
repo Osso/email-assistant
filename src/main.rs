@@ -69,6 +69,10 @@ enum Commands {
     Learn,
     /// Show current classification profile
     Profile,
+    /// Show emails that need a reply
+    NeedsReply,
+    /// Show important/urgent emails
+    Today,
 }
 
 #[derive(Subcommand)]
@@ -119,6 +123,12 @@ async fn main() -> Result<()> {
         }
         Commands::Profile => {
             commands::profile().await?;
+        }
+        Commands::NeedsReply => {
+            commands::needs_reply(provider).await?;
+        }
+        Commands::Today => {
+            commands::today(provider).await?;
         }
     }
 
@@ -474,6 +484,88 @@ mod commands {
     pub async fn profile() -> Result<()> {
         let profile = Profile::load()?;
         println!("{}", profile.content());
+        Ok(())
+    }
+
+    pub async fn needs_reply(provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
+        let predictions = PredictionStore::load()?;
+
+        println!("Emails that need a reply:\n");
+
+        let mut found = false;
+        for prediction in predictions.all_predictions() {
+            if prediction.needs_reply() {
+                // Verify email still exists and get current state
+                match provider.get_message(&prediction.email_id).await {
+                    Ok(email) => {
+                        let is_unread = email.labels.iter().any(|l| l == "UNREAD");
+                        let marker = if is_unread { "●" } else { " " };
+                        println!(
+                            "{} {} | {} | {:?}",
+                            marker,
+                            prediction.email_id,
+                            prediction.subject.chars().take(50).collect::<String>(),
+                            prediction.all_labels()
+                        );
+                        found = true;
+                    }
+                    Err(_) => {
+                        // Email was deleted, skip
+                    }
+                }
+            }
+        }
+
+        if !found {
+            println!("No emails need a reply.");
+        }
+
+        Ok(())
+    }
+
+    pub async fn today(provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
+        let predictions = PredictionStore::load()?;
+
+        println!("Important/Urgent emails:\n");
+
+        let mut items: Vec<_> = predictions.all_predictions()
+            .filter(|p| p.is_important())
+            .collect();
+
+        // Sort by timestamp, most recent first
+        items.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        let mut found = false;
+        for prediction in items {
+            // Verify email still exists
+            match provider.get_message(&prediction.email_id).await {
+                Ok(email) => {
+                    let is_unread = email.labels.iter().any(|l| l == "UNREAD");
+                    let is_urgent = prediction.action.iter().any(|a| a == "Urgent");
+                    let marker = if is_unread { "●" } else { " " };
+                    let urgent = if is_urgent { "🔥" } else { " " };
+                    println!(
+                        "{}{} {} | {} | {:?}",
+                        marker,
+                        urgent,
+                        prediction.email_id,
+                        prediction.subject.chars().take(45).collect::<String>(),
+                        prediction.all_labels()
+                    );
+                    found = true;
+                }
+                Err(_) => {
+                    // Email was deleted, skip
+                }
+            }
+        }
+
+        if !found {
+            println!("No important/urgent emails.");
+        }
+
         Ok(())
     }
 
