@@ -194,8 +194,10 @@ mod commands {
             let classification = classifier.classify(&email).await?;
 
             // Build status indicators
-            let status = build_status_indicators(&email.labels, classification.is_important);
-            let action = if classification.delete {
+            let is_important = classification.action.iter()
+                .any(|a| a == "Important" || a == "Urgent");
+            let status = build_status_indicators(&email.labels, is_important);
+            let action_str = if classification.delete {
                 " → DELETE"
             } else if classification.archive {
                 " → archive"
@@ -203,13 +205,15 @@ mod commands {
                 ""
             };
 
+            // Format: theme labels + action labels
+            let all_labels = classification.labels();
             println!(
                 "{} {} | {} | {:?}{}",
                 email.id,
                 status,
                 email.subject.chars().take(50).collect::<String>(),
-                classification.labels,
-                action
+                all_labels,
+                action_str
             );
 
             if !dry_run {
@@ -220,7 +224,7 @@ mod commands {
                     }
                 } else {
                     // Apply predicted labels to Gmail so user can recategorize
-                    for label in &classification.labels {
+                    for label in &all_labels {
                         if let Err(e) = provider.add_label(&email.id, label).await {
                             eprintln!("  Warning: couldn't apply label '{}': {}", label, e);
                         }
@@ -238,7 +242,7 @@ mod commands {
                 }
                 predictions.store(&email.id, &email.from, &email.subject, &classification)?;
             } else {
-                println!("  [dry-run] Would apply labels: {:?}", classification.labels);
+                println!("  [dry-run] Would apply labels: {:?}", all_labels);
                 if classification.delete {
                     println!("  [dry-run] Would DELETE");
                 } else if classification.archive {

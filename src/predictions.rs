@@ -14,10 +14,37 @@ pub struct Prediction {
     #[serde(default)]
     pub subject: String,
     pub is_spam: bool,
-    pub is_important: bool,
+    /// Theme labels (what email is about)
+    #[serde(default)]
+    pub theme: Vec<String>,
+    /// Action labels (what to do with it)
+    #[serde(default)]
+    pub action: Vec<String>,
+    /// Legacy field for backward compatibility
+    #[serde(default)]
     pub labels: Vec<String>,
     pub confidence: f32,
     pub timestamp: DateTime<Utc>,
+}
+
+impl Prediction {
+    /// All labels combined
+    pub fn all_labels(&self) -> Vec<String> {
+        if !self.theme.is_empty() || !self.action.is_empty() {
+            self.theme.iter().chain(self.action.iter()).cloned().collect()
+        } else {
+            // Fallback to legacy labels field
+            self.labels.clone()
+        }
+    }
+
+    pub fn is_important(&self) -> bool {
+        self.action.iter().any(|a| a == "Important" || a == "Urgent")
+    }
+
+    pub fn needs_reply(&self) -> bool {
+        self.action.iter().any(|a| a == "Needs-Reply")
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -62,8 +89,9 @@ impl PredictionStore {
                 from: from.to_string(),
                 subject: subject.to_string(),
                 is_spam: classification.is_spam,
-                is_important: classification.is_important,
-                labels: classification.labels.clone(),
+                theme: classification.theme.clone(),
+                action: classification.action.clone(),
+                labels: vec![], // Legacy field, no longer used
                 confidence: classification.confidence,
                 timestamp: Utc::now(),
             },

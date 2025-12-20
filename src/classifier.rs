@@ -8,13 +8,24 @@ use tokio::process::Command;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Classification {
     pub is_spam: bool,
-    pub is_important: bool,
     #[serde(default)]
     pub archive: bool,
     #[serde(default)]
     pub delete: bool,
-    pub labels: Vec<String>,
+    /// Theme labels (1-2): what the email is about
+    #[serde(default)]
+    pub theme: Vec<String>,
+    /// Action labels: what to do with it
+    #[serde(default)]
+    pub action: Vec<String>,
     pub confidence: f32,
+}
+
+impl Classification {
+    /// Combined labels for backward compatibility
+    pub fn labels(&self) -> Vec<String> {
+        self.theme.iter().chain(self.action.iter()).cloned().collect()
+    }
 }
 
 /// Response wrapper from `claude --output-format json`
@@ -50,13 +61,18 @@ Body: {}
 
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
-- is_important: true if requires attention or action (security alerts are always important)
-- labels: assign 1-3 descriptive labels. Examples: "Receipts", "Newsletters", "Promotional", "Work", "Personal", "Shipping", "Social", "Security", "Urgent", "Finance", "Travel". Use "Accounts" ONLY for registration, password reset emails - not for service notifications. Security alerts get ["Security", "Urgent"]
-- archive: true if email doesn't need to stay in inbox (promotional, newsletters, automated notifications, receipts under $500)
+- theme: 1-2 labels describing what email is about. Examples: "Receipts", "Finance", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping"
+- action: 0+ labels for what to do. Options:
+  - "Newsletters" - regular subscription/marketing content
+  - "Needs-Reply" - expects a response from you (questions, requests, invitations)
+  - "Important" - requires your attention
+  - "Urgent" - time-sensitive, needs immediate attention (security alerts are always Urgent)
+  - "Follow-Up" - you sent something and are waiting for response
+- archive: true if email doesn't need to stay in inbox (newsletters, promotional, automated notifications, receipts under $500)
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
-{{"is_spam": false, "is_important": false, "labels": ["Example"], "archive": false, "delete": false, "confidence": 0.8}}"#,
+{{"is_spam": false, "theme": ["Finance"], "action": ["Important"], "archive": false, "delete": false, "confidence": 0.8}}"#,
             self.profile.content(),
             email.from,
             email.subject,
@@ -89,10 +105,15 @@ Respond with JSON only:
             serde_json::from_str(&json_str).context("Failed to parse classification response")?;
 
         // Filter out internal labels that shouldn't be suggested by LLM
-        classification.labels.retain(|l| !l.eq_ignore_ascii_case("Classified"));
+        classification.theme.retain(|l| !l.eq_ignore_ascii_case("Classified"));
+        classification.action.retain(|l| !l.eq_ignore_ascii_case("Classified"));
 
         // Capitalize first letter of each label for consistency
-        classification.labels = classification.labels
+        classification.theme = classification.theme
+            .into_iter()
+            .map(|l| capitalize_first(&l))
+            .collect();
+        classification.action = classification.action
             .into_iter()
             .map(|l| capitalize_first(&l))
             .collect();

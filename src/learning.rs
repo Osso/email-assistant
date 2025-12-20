@@ -56,7 +56,8 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             let spam_mismatch = prediction.is_spam != actual_spam;
 
             // Check if our predicted labels are still on the email (case-insensitive)
-            let removed_labels: Vec<_> = prediction.labels.iter()
+            let predicted_labels = prediction.all_labels();
+            let removed_labels: Vec<_> = predicted_labels.iter()
                 .filter(|pred_label| {
                     !email.labels.iter().any(|email_label|
                         email_label.eq_ignore_ascii_case(pred_label)
@@ -69,7 +70,7 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             let added_labels: Vec<_> = email.labels.iter()
                 .filter(|email_label| {
                     !is_system_label(email_label) &&
-                    !prediction.labels.iter().any(|pred_label|
+                    !predicted_labels.iter().any(|pred_label|
                         pred_label.eq_ignore_ascii_case(email_label)
                     )
                 })
@@ -83,7 +84,7 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
                     email_id: prediction.email_id.clone(),
                     from: prediction.from.clone(),
                     subject: prediction.subject.clone(),
-                    predicted_labels: prediction.labels.clone(),
+                    predicted_labels: prediction.all_labels(),
                     actual_labels: email.labels.iter()
                         .filter(|l| !is_system_label(l))
                         .cloned()
