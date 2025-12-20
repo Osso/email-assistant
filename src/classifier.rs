@@ -76,7 +76,7 @@ Classify this email:
   - "Group-Thread" - group thread/discussion where you're CC'd (auto-archive)
   - "Other" - doesn't fit other categories (auto-archive)
 - archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, Survey, Awaiting-Reply, Group-Thread, Other, Updates, Needs-Reply without urgency, Bills without Needs-Reply, receipts under $500, account notifications without action required). NEVER archive Security emails
-- delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
+- delete: true if email matches auto-delete rules in profile. CHECK THE TO FIELD - if email is TO a work address listed in Auto-Delete Rules, set delete=true
 
 Respond with JSON only:
 {{"is_spam": false, "theme": ["Finance"], "action": ["Important"], "archive": false, "delete": false, "confidence": 0.8}}"#,

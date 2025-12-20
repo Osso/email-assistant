@@ -5,6 +5,7 @@ mod learning;
 mod predictions;
 mod profile;
 mod providers;
+mod rules;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -148,6 +149,7 @@ mod commands {
     use crate::providers::gmail::GmailProvider;
     use crate::providers::outlook::OutlookProvider;
     use crate::providers::EmailProvider;
+    use crate::rules;
     use anyhow::Result;
 
     async fn create_provider(name: &str) -> Result<Box<dyn EmailProvider>> {
@@ -218,11 +220,15 @@ mod commands {
 
         // Step 2: Classify new emails (exclude already classified)
         let classifier = Classifier::new(&profile);
+        let user_rules = rules::load_rules().unwrap_or_default();
         let label = if archived { "" } else { "INBOX" };
         let emails = provider.list_messages(max, label, Some("-label:Classified")).await?;
 
         for email in emails {
-            let classification = classifier.classify(&email).await?;
+            let mut classification = classifier.classify(&email).await?;
+
+            // Apply user-defined rules (e.g., auto-delete based on To field)
+            rules::apply_rules(&email, &mut classification, &user_rules);
 
             // Build status indicators
             let is_important = classification.action.iter()
