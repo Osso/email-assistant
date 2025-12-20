@@ -38,10 +38,6 @@ impl Prediction {
         }
     }
 
-    pub fn is_important(&self) -> bool {
-        self.action.iter().any(|a| a == "Important" || a == "Urgent")
-    }
-
     pub fn needs_reply(&self) -> bool {
         self.action.iter().any(|a| a == "Needs-Reply")
     }

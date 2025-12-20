@@ -8,6 +8,7 @@ use async_trait::async_trait;
 pub struct Email {
     pub id: String,
     pub from: String,
+    pub to: String,
     pub subject: String,
     pub body: String,
     pub labels: Vec<String>,

@@ -74,8 +74,8 @@ enum Commands {
     Profile,
     /// Show emails that need a reply
     NeedsReply,
-    /// Show important/urgent emails
-    Today,
+    /// AI-generated inbox summary
+    Summary,
 }
 
 #[derive(Subcommand)]
@@ -130,8 +130,8 @@ async fn main() -> Result<()> {
         Commands::NeedsReply => {
             commands::needs_reply(provider).await?;
         }
-        Commands::Today => {
-            commands::today(provider).await?;
+        Commands::Summary => {
+            commands::summary(provider).await?;
         }
     }
 
@@ -564,47 +564,88 @@ mod commands {
         Ok(())
     }
 
-    pub async fn today(provider_name: &str) -> Result<()> {
+    pub async fn summary(provider_name: &str) -> Result<()> {
+        use anyhow::Context;
+        use std::process::Stdio;
+        use std::time::Duration;
+        use tokio::io::AsyncWriteExt;
+        use tokio::process::Command;
+        use tokio::time::timeout;
+
         let provider = create_provider(provider_name).await?;
-        let predictions = PredictionStore::load()?;
 
-        println!("Important/Urgent emails:\n");
+        // Fetch unclassified emails
+        let emails = provider.list_messages(100, "INBOX", Some("-label:Classified")).await?;
 
-        let mut items: Vec<_> = predictions.all_predictions()
-            .filter(|p| p.is_important())
-            .collect();
-
-        // Sort by timestamp, most recent first
-        items.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
-        let mut found = false;
-        for prediction in items {
-            // Verify email still exists
-            match provider.get_message(&prediction.email_id).await {
-                Ok(email) => {
-                    let is_unread = email.labels.iter().any(|l| l == "UNREAD");
-                    let is_urgent = prediction.action.iter().any(|a| a == "Urgent");
-                    let marker = if is_unread { "●" } else { " " };
-                    let urgent = if is_urgent { "🔥" } else { " " };
-                    println!(
-                        "{}{} {} | {} | {:?}",
-                        marker,
-                        urgent,
-                        prediction.email_id,
-                        prediction.subject.chars().take(45).collect::<String>(),
-                        prediction.all_labels()
-                    );
-                    found = true;
-                }
-                Err(_) => {
-                    // Email was deleted, skip
-                }
-            }
+        if emails.is_empty() {
+            println!("No unclassified emails in inbox.");
+            return Ok(());
         }
 
-        if !found {
-            println!("No important/urgent emails.");
+        println!("Analyzing {} emails...\n", emails.len());
+
+        // Format emails for Claude
+        let mut email_text = String::new();
+        for (i, email) in emails.iter().enumerate() {
+            let body_preview: String = email.body.chars().take(2000).collect();
+            email_text.push_str(&format!(
+                "=== Email {} ===\nFrom: {}\nSubject: {}\nBody:\n{}\n\n",
+                i + 1,
+                email.from,
+                email.subject,
+                body_preview
+            ));
         }
+
+        let prompt = format!(
+            r#"Analyze these emails and provide actionable summary.
+
+{}
+
+Rules:
+- Always identify emails by sender and subject, never "Email 1" or "Email 2"
+- For emails needing reply: state WHAT to reply (e.g. "confirm attendance", "approve budget")
+- For urgent items: state WHY it's urgent and WHAT action to take
+- Skip generic notifications that need no action
+- Be specific and actionable, not vague
+
+Format:
+## Needs Action
+- [sender]: [subject] → [specific action needed]
+
+## FYI (no action needed)
+- [sender]: [subject] - [one line summary]"#,
+            email_text
+        );
+
+        // Save prompt for debugging
+        let prompt_file = std::env::temp_dir().join("email-assistant-summary-prompt.txt");
+        let _ = std::fs::write(&prompt_file, &prompt);
+
+        let mut child = Command::new("claude")
+            .args(["-p", "-", "--model", "haiku", "--no-session-persistence"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn claude CLI")?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(prompt.as_bytes()).await?;
+        }
+
+        let output = timeout(Duration::from_secs(60), child.wait_with_output())
+            .await
+            .context("Claude CLI timed out after 60s")?
+            .context("Failed to run claude CLI")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("claude CLI failed: {}", stderr);
+        }
+
+        let response = String::from_utf8_lossy(&output.stdout);
+        println!("{}", response.trim());
 
         Ok(())
     }

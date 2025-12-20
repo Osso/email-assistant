@@ -10,6 +10,8 @@ use tokio::process::Command;
 struct OutlookMessage {
     id: String,
     from: String,
+    #[serde(default)]
+    to: String,
     subject: String,
     #[serde(default)]
     body: String,
@@ -74,6 +76,7 @@ impl OutlookProvider {
         Email {
             id: msg.id,
             from: msg.from,
+            to: msg.to,
             subject: msg.subject,
             body,
             labels,

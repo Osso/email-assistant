@@ -61,11 +61,16 @@ impl GmailProvider {
 
     fn message_to_email(&self, msg: gmail::Message) -> Email {
         let label_ids = msg.label_ids.clone().unwrap_or_default();
+        // Use body text if available, fall back to snippet
+        let body = msg.get_body_text()
+            .or_else(|| msg.snippet.clone())
+            .unwrap_or_default();
         Email {
             id: msg.id.clone(),
             from: msg.get_header("From").unwrap_or("").to_string(),
+            to: msg.get_header("To").unwrap_or("").to_string(),
             subject: msg.get_header("Subject").unwrap_or("(no subject)").to_string(),
-            body: msg.get_body_text().unwrap_or_default(),
+            body,
             labels: self.resolve_label_ids(label_ids),
         }
     }

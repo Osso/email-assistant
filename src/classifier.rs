@@ -57,13 +57,14 @@ impl<'a> Classifier<'a> {
 
 <email>
 From: {}
+To: {}
 Subject: {}
 Body: {}
 </email>
 
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
-- theme: 1-2 labels describing what email is about. Examples: "Receipts", "Bills", "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account"
+- theme: 1-2 labels describing what email is about. Examples: "Receipts" (payment confirmations AFTER charge), "Bills" (upcoming payments, auto-renewal notices, subscription charges - archive if auto-pay), "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account"
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
   - "Promotional" - ads, sales, marketing from companies (auto-archive)
@@ -72,15 +73,16 @@ Classify this email:
   - "Important" - requires your attention today
   - "Urgent" - time-sensitive, needs immediate attention (security alerts are always Urgent)
   - "Awaiting-Reply" - you sent something and are waiting for response, no action needed now (auto-archive)
-  - "FYI" - group thread/discussion, you're CC'd or just informed (auto-archive)
+  - "Group-Thread" - group thread/discussion where you're CC'd (auto-archive)
   - "Other" - doesn't fit other categories (auto-archive)
-- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, Survey, Awaiting-Reply, FYI, Other, Updates, Needs-Reply without urgency, Bills without Needs-Reply, receipts under $500). NEVER archive Security emails
+- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, Survey, Awaiting-Reply, Group-Thread, Other, Updates, Needs-Reply without urgency, Bills without Needs-Reply, receipts under $500, account notifications without action required). NEVER archive Security emails
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
 {{"is_spam": false, "theme": ["Finance"], "action": ["Important"], "archive": false, "delete": false, "confidence": 0.8}}"#,
             self.profile.content(),
             email.from,
+            email.to,
             email.subject,
             body_preview
         );
