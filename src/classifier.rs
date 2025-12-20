@@ -3,7 +3,9 @@ use crate::providers::Email;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Classification {
@@ -82,13 +84,17 @@ Respond with JSON only:
             body_preview
         );
 
-        let output = Command::new("claude")
-            .args(["-p", &prompt, "--output-format", "json", "--model", "haiku"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run claude CLI")?;
+        let output = timeout(
+            Duration::from_secs(20),
+            Command::new("claude")
+                .args(["-p", &prompt, "--output-format", "json", "--model", "haiku"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+        )
+        .await
+        .context("Claude CLI timed out after 20s")?
+        .context("Failed to run claude CLI")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
