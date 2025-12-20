@@ -61,7 +61,7 @@ Body: {}
 
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
-- theme: 1-2 labels describing what email is about. Examples: "Receipts", "Finance", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping"
+- theme: 1-2 labels describing what email is about. Examples: "Receipts", "Bills", "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping"
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
   - "Promotional" - ads, sales, marketing from companies (auto-archive)
@@ -71,7 +71,7 @@ Classify this email:
   - "Awaiting-Reply" - you sent something and are waiting for response, no action needed now (auto-archive)
   - "FYI" - group thread/discussion, you're CC'd or just informed (auto-archive)
   - "Other" - doesn't fit other categories (auto-archive)
-- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, Awaiting-Reply, FYI, Other, Needs-Reply without urgency, automated notifications, receipts under $500). NEVER archive Security emails
+- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, Awaiting-Reply, FYI, Other, Needs-Reply without urgency, Bills without Needs-Reply, automated notifications, receipts under $500). NEVER archive Security emails
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
