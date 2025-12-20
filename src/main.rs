@@ -17,6 +17,10 @@ struct Cli {
     #[arg(long, global = true)]
     dry_run: bool,
 
+    /// Email provider to use
+    #[arg(long, global = true, default_value = "gmail")]
+    provider: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -77,6 +81,7 @@ enum LabelsAction {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let dry_run = cli.dry_run;
+    let provider = &cli.provider;
 
     if dry_run {
         println!("🔍 DRY RUN MODE - no changes will be made\n");
@@ -84,33 +89,33 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Scan { max } => {
-            commands::scan(max, dry_run).await?;
+            commands::scan(max, dry_run, provider).await?;
         }
         Commands::Labels { action } => match action {
             Some(LabelsAction::Cleanup) => {
-                commands::labels_cleanup(dry_run).await?;
+                commands::labels_cleanup(dry_run, provider).await?;
             }
             None => {
-                commands::labels_list().await?;
+                commands::labels_list(provider).await?;
             }
         },
         Commands::Spam { id } => {
-            commands::spam(&id, dry_run).await?;
+            commands::spam(&id, dry_run, provider).await?;
         }
         Commands::Unspam { id } => {
-            commands::unspam(&id, dry_run).await?;
+            commands::unspam(&id, dry_run, provider).await?;
         }
         Commands::Archive { id } => {
-            commands::archive(&id, dry_run).await?;
+            commands::archive(&id, dry_run, provider).await?;
         }
         Commands::Delete { id } => {
-            commands::delete(&id, dry_run).await?;
+            commands::delete(&id, dry_run, provider).await?;
         }
         Commands::Label { id, label } => {
-            commands::label(&id, &label, dry_run).await?;
+            commands::label(&id, &label, dry_run, provider).await?;
         }
         Commands::Learn => {
-            commands::learn(dry_run).await?;
+            commands::learn(dry_run, provider).await?;
         }
         Commands::Profile => {
             commands::profile().await?;
@@ -128,12 +133,21 @@ mod commands {
     use crate::predictions::PredictionStore;
     use crate::profile::Profile;
     use crate::providers::gmail::GmailProvider;
+    use crate::providers::outlook::OutlookProvider;
     use crate::providers::EmailProvider;
     use anyhow::Result;
 
-    pub async fn scan(max: u32, dry_run: bool) -> Result<()> {
+    async fn create_provider(name: &str) -> Result<Box<dyn EmailProvider>> {
+        match name {
+            "gmail" => Ok(Box::new(GmailProvider::new().await?)),
+            "outlook" => Ok(Box::new(OutlookProvider::new().await?)),
+            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail' or 'outlook'", name),
+        }
+    }
+
+    pub async fn scan(max: u32, dry_run: bool, provider_name: &str) -> Result<()> {
         let _config = Config::load()?;
-        let provider = GmailProvider::new().await?;
+        let provider = create_provider(provider_name).await?;
         let mut profile = Profile::load()?;
         let mut predictions = PredictionStore::load()?;
         let _label_manager = LabelManager::load()?;
@@ -241,8 +255,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn labels_list() -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn labels_list(provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
         let label_manager = LabelManager::load()?;
 
         // Fetch provider labels
@@ -261,8 +275,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn labels_cleanup(dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn labels_cleanup(dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
         let mut label_manager = LabelManager::load()?;
         let mut profile = Profile::load()?;
 
@@ -287,8 +301,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn spam(id: &str, dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn spam(id: &str, dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
 
@@ -315,8 +329,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn unspam(id: &str, dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn unspam(id: &str, dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
 
@@ -343,8 +357,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn archive(id: &str, dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn archive(id: &str, dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
 
         // Get email details first
         let email = provider.get_message(id).await?;
@@ -360,8 +374,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn delete(id: &str, dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn delete(id: &str, dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
 
         // Get email details first
         let email = provider.get_message(id).await?;
@@ -377,8 +391,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn label(id: &str, label: &str, dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn label(id: &str, label: &str, dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
         let mut profile = Profile::load()?;
         let predictions = PredictionStore::load()?;
 
@@ -405,8 +419,8 @@ mod commands {
         Ok(())
     }
 
-    pub async fn learn(dry_run: bool) -> Result<()> {
-        let provider = GmailProvider::new().await?;
+    pub async fn learn(dry_run: bool, provider_name: &str) -> Result<()> {
+        let provider = create_provider(provider_name).await?;
         let mut profile = Profile::load()?;
         let mut predictions = PredictionStore::load()?;
 
