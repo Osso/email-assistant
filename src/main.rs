@@ -628,8 +628,14 @@ Format:
         let prompt_file = std::env::temp_dir().join("email-assistant-summary-prompt.txt");
         let _ = std::fs::write(&prompt_file, &prompt);
 
+        // Disallow all MCP tools to prevent prompt injection from email content
         let mut child = Command::new("claude")
-            .args(["-p", "-", "--model", "haiku", "--tools", "", "--mcp-config", "", "--no-session-persistence"])
+            .args([
+                "-p", "-",
+                "--model", "haiku",
+                "--disallowedTools", "mcp__browsermcp__browser_navigate,mcp__browsermcp__browser_click,mcp__browsermcp__browser_snapshot,mcp__browsermcp__browser_screenshot,mcp__browsermcp__browser_wait,mcp__browsermcp__browser_hover,mcp__browsermcp__browser_type,mcp__browsermcp__browser_select_option,mcp__browsermcp__browser_press_key,mcp__browsermcp__browser_go_back,mcp__browsermcp__browser_go_forward,mcp__browsermcp__browser_get_console_logs",
+                "--no-session-persistence",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
