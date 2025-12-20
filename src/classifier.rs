@@ -63,13 +63,14 @@ Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
 - theme: 1-2 labels describing what email is about. Examples: "Receipts", "Finance", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping"
 - action: 0+ labels for what to do. Options:
-  - "Newsletters" - regular subscription/marketing content
+  - "Newsletters" - regular subscription content you signed up for
+  - "Promotional" - ads, sales, marketing from companies (auto-archive)
   - "Needs-Reply" - expects a response from you (questions, requests, invitations)
   - "Important" - requires your attention
   - "Urgent" - time-sensitive, needs immediate attention (security alerts are always Urgent)
   - "Follow-Up" - you sent something and are waiting for response
   - "Watching" - group thread/discussion, no action needed from you (CC'd, FYI, team updates)
-- archive: true if email doesn't need to stay in inbox (newsletters, promotional, automated notifications, receipts under $500, Watching threads)
+- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, automated notifications, receipts under $500, Watching threads)
 - delete: true if email matches auto-delete rules in profile (check Auto-Delete Rules section)
 
 Respond with JSON only:
