@@ -179,7 +179,7 @@ If no update is needed (the profile already covers this case), respond with just
         let output = timeout(
             Duration::from_secs(60),
             Command::new("claude")
-                .args(["-p", &prompt, "--model", "haiku", "--tools", "", "--no-session-persistence"])
+                .args(["-p", &prompt, "--model", "haiku", "--tools", "", "--mcp-config", "", "--no-session-persistence"])
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output()
@@ -236,7 +236,7 @@ If no meaningful patterns can be extracted, respond with just: NO_UPDATE_NEEDED"
 
         // Use stdin for prompt to avoid CLI arg length limits
         let mut child = Command::new("claude")
-            .args(["-p", "-", "--model", "haiku", "--tools", "", "--no-session-persistence"])
+            .args(["-p", "-", "--model", "haiku", "--tools", "", "--mcp-config", "", "--no-session-persistence"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

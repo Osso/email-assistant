@@ -89,7 +89,7 @@ Respond with JSON only:
 
         // Use stdin for prompt to avoid CLI arg length limits
         let mut child = Command::new("claude")
-            .args(["-p", "-", "--output-format", "json", "--model", "haiku", "--tools", "", "--no-session-persistence"])
+            .args(["-p", "-", "--output-format", "json", "--model", "haiku", "--tools", "", "--mcp-config", "", "--no-session-persistence"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

@@ -629,7 +629,7 @@ Format:
         let _ = std::fs::write(&prompt_file, &prompt);
 
         let mut child = Command::new("claude")
-            .args(["-p", "-", "--model", "haiku", "--tools", "", "--no-session-persistence"])
+            .args(["-p", "-", "--model", "haiku", "--tools", "", "--mcp-config", "", "--no-session-persistence"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
