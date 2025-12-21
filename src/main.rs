@@ -28,6 +28,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Authenticate with email provider (opens browser)
+    Login,
     /// Scan and classify emails (learns from corrections first)
     Scan {
         /// Maximum number of emails to scan
@@ -96,6 +98,9 @@ async fn main() -> Result<()> {
     }
 
     match cli.command {
+        Commands::Login => {
+            commands::login(provider).await?;
+        }
         Commands::Scan { max, archived } => {
             commands::scan(max, dry_run, provider, archived).await?;
         }
@@ -158,6 +163,26 @@ mod commands {
             "outlook" => Ok(Box::new(OutlookProvider::new().await?)),
             _ => anyhow::bail!("Unknown provider: {}. Use 'gmail' or 'outlook'", name),
         }
+    }
+
+    pub async fn login(provider_name: &str) -> Result<()> {
+        match provider_name {
+            "gmail" => {
+                let cfg = gmail::config::load_config()?;
+                let client_id = cfg.client_id();
+                let client_secret = cfg.client_secret();
+                gmail::auth::login(client_id, client_secret).await?;
+                println!("Gmail login successful! Tokens saved.");
+            }
+            "outlook" => {
+                let cfg = outlook::config::load_config()?;
+                let client_id = cfg.client_id();
+                outlook::auth::login(client_id).await?;
+                println!("Outlook login successful! Tokens saved.");
+            }
+            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail' or 'outlook'", provider_name),
+        }
+        Ok(())
     }
 
     pub async fn scan(max: u32, dry_run: bool, provider_name: &str, archived: bool) -> Result<()> {
