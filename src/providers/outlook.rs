@@ -1,83 +1,87 @@
 use super::{Email, EmailProvider, Label};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use serde::Deserialize;
-use std::process::Stdio;
-use tokio::process::Command;
+use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OutlookMessage {
-    id: String,
-    from: String,
-    #[serde(default)]
-    to: String,
-    subject: String,
-    #[serde(default)]
-    body: String,
-    #[serde(default)]
-    snippet: String,
-    #[serde(default)]
-    categories: Vec<String>,
-    #[serde(default)]
-    is_read: bool,
+pub struct OutlookProvider {
+    client: outlook::api::Client,
+    category_id_to_name: HashMap<String, String>,
 }
-
-#[derive(Debug, Deserialize)]
-struct OutlookCategory {
-    #[serde(rename = "displayName")]
-    display_name: String,
-    id: String,
-}
-
-pub struct OutlookProvider;
 
 impl OutlookProvider {
     pub async fn new() -> Result<Self> {
-        // Verify outlook CLI is available and authenticated
-        let output = Command::new("outlook")
-            .args(["list", "-n", "1", "--json"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook CLI. Is it installed?")?;
+        let cfg = outlook::config::load_config()?;
+        let client_id = cfg.client_id.ok_or_else(|| {
+            anyhow::anyhow!("Outlook not configured. Run 'outlook config <client-id> <client-secret>' first")
+        })?;
+        let client_secret = cfg.client_secret.ok_or_else(|| {
+            anyhow::anyhow!("Outlook not configured. Run 'outlook config <client-id> <client-secret>' first")
+        })?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if stderr.contains("Not logged in") || stderr.contains("token") {
-                anyhow::bail!("Outlook not authenticated. Run 'outlook login' first");
+        let tokens = outlook::config::load_tokens()
+            .context("Not logged in. Run 'outlook login' first")?;
+
+        // Try to use existing token, refresh if needed
+        let client = outlook::api::Client::new(&tokens.access_token);
+
+        // Test if token works by listing one message
+        let client = match client.list_messages("inbox", None, 1).await {
+            Ok(_) => client,
+            Err(_) => {
+                // Token expired, try refresh
+                let new_tokens =
+                    outlook::auth::refresh_token(&client_id, &client_secret, &tokens.refresh_token)
+                        .await?;
+                outlook::api::Client::new(&new_tokens.access_token)
             }
-            anyhow::bail!("Outlook CLI error: {}", stderr);
+        };
+
+        // Build category ID to name mapping
+        let mut category_id_to_name = HashMap::new();
+        if let Ok(categories) = client.list_categories().await {
+            if let Some(cat_list) = categories.value {
+                for cat in cat_list {
+                    if let Some(id) = cat.id {
+                        category_id_to_name.insert(id, cat.display_name);
+                    }
+                }
+            }
         }
 
-        Ok(Self)
+        Ok(Self { client, category_id_to_name })
     }
 
-    fn message_to_email(msg: OutlookMessage) -> Email {
+    fn resolve_category_ids(&self, category_names: Vec<String>) -> Vec<String> {
+        // Outlook categories are already names, not IDs like Gmail
+        // But we keep this for consistency
+        category_names
+    }
+
+    fn message_to_email(&self, msg: outlook::api::Message) -> Email {
+        let categories = msg.categories.clone().unwrap_or_default();
+
         // Build pseudo-labels from Outlook state
-        let mut labels = msg.categories.clone();
+        let mut labels = self.resolve_category_ids(categories);
 
         // Add INBOX pseudo-label (outlook list defaults to inbox)
         labels.push("INBOX".to_string());
 
         // Add UNREAD pseudo-label if not read
-        if !msg.is_read {
+        if msg.is_read == Some(false) {
             labels.push("UNREAD".to_string());
         }
 
-        // Use snippet as body if full body not available, strip HTML
-        let body = if msg.body.is_empty() {
-            msg.snippet.clone()
-        } else {
-            strip_html(&msg.body)
-        };
+        // Use body text if available, fall back to body preview
+        let body = msg.get_body_text()
+            .or_else(|| msg.body_preview.clone())
+            .map(|b| strip_html(&b))
+            .unwrap_or_default();
 
         Email {
-            id: msg.id,
-            from: msg.from,
-            to: msg.to,
-            subject: msg.subject,
+            id: msg.id.clone(),
+            from: msg.get_from().unwrap_or_default(),
+            to: msg.get_to().unwrap_or_default(),
+            subject: msg.subject.clone().unwrap_or_else(|| "(no subject)".to_string()),
             body,
             labels,
         }
@@ -115,189 +119,80 @@ fn strip_html(html: &str) -> String {
 #[async_trait]
 impl EmailProvider for OutlookProvider {
     async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>> {
-        let max_str = max.to_string();
-        let mut args = vec!["list", "-n", &max_str, "--json"];
-
         // Map Gmail-style label to Outlook folder
         let folder = match label {
             "INBOX" => "inbox",
-            "SENT" => "sent",
-            "TRASH" => "trash",
-            "SPAM" => "spam",
+            "SENT" => "sentitems",
+            "TRASH" => "deleteditems",
+            "SPAM" => "junkemail",
             _ => "inbox",
         };
-        args.extend(["-l", folder]);
 
-        // Handle query - Outlook uses different query syntax
-        // For now, we filter client-side for -label:X queries
-        let exclude_category = query.and_then(|q| {
+        // Handle query - convert -label:X to category filter
+        let filter = query.and_then(|q| {
             if q.starts_with("-label:") {
-                Some(q.trim_start_matches("-label:"))
+                let cat = q.trim_start_matches("-label:");
+                // OData filter to exclude category
+                Some(format!("NOT (categories/any(c:c eq '{}'))", cat))
             } else {
                 None
             }
         });
 
-        let output = Command::new("outlook")
-            .args(&args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook list")?;
+        let list = self.client.list_messages(folder, filter.as_deref(), max).await?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook list failed: {}", stderr);
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let messages: Vec<OutlookMessage> = serde_json::from_str(&stdout)
-            .context("Failed to parse outlook list output")?;
-
-        let mut emails: Vec<Email> = messages
-            .into_iter()
-            .map(Self::message_to_email)
-            .collect();
-
-        // Client-side filtering for excluded categories
-        if let Some(exclude) = exclude_category {
-            emails.retain(|e| !e.labels.iter().any(|l| l.eq_ignore_ascii_case(exclude)));
+        let mut emails = Vec::new();
+        if let Some(messages) = list.value {
+            for msg_ref in messages {
+                // Get full message with body
+                let msg = self.client.get_message(&msg_ref.id).await?;
+                emails.push(self.message_to_email(msg));
+            }
         }
 
         Ok(emails)
     }
 
     async fn get_message(&self, id: &str) -> Result<Email> {
-        let output = Command::new("outlook")
-            .args(["read", id, "--json"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook read")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook read failed: {}", stderr);
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let msg: OutlookMessage = serde_json::from_str(&stdout)
-            .context("Failed to parse outlook read output")?;
-
-        Ok(Self::message_to_email(msg))
+        let msg = self.client.get_message(id).await?;
+        Ok(self.message_to_email(msg))
     }
 
     async fn list_labels(&self) -> Result<Vec<Label>> {
-        let output = Command::new("outlook")
-            .args(["labels", "--json"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook labels")?;
+        let list = self.client.list_categories().await?;
+        let mut labels = Vec::new();
 
-        if !output.status.success() {
-            // Categories API might not be available, return empty
-            return Ok(Vec::new());
+        if let Some(categories) = list.value {
+            for cat in categories {
+                labels.push(Label {
+                    id: cat.id.unwrap_or_else(|| cat.display_name.clone()),
+                    name: cat.display_name,
+                });
+            }
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let categories: Vec<OutlookCategory> = serde_json::from_str(&stdout)
-            .unwrap_or_default();
-
-        Ok(categories
-            .into_iter()
-            .map(|c| Label {
-                id: c.id,
-                name: c.display_name,
-            })
-            .collect())
+        Ok(labels)
     }
 
     async fn add_label(&self, id: &str, label: &str) -> Result<()> {
-        let output = Command::new("outlook")
-            .args(["label", id, label])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook label")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook label failed: {}", stderr);
-        }
-
-        Ok(())
+        // Ensure category exists in master list first
+        self.client.ensure_category(label).await?;
+        self.client.add_category(id, label).await
     }
 
     async fn mark_spam(&self, id: &str) -> Result<()> {
-        let output = Command::new("outlook")
-            .args(["spam", id])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook spam")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook spam failed: {}", stderr);
-        }
-
-        Ok(())
+        self.client.mark_spam(id).await
     }
 
     async fn unspam(&self, id: &str) -> Result<()> {
-        let output = Command::new("outlook")
-            .args(["unspam", id])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook unspam")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook unspam failed: {}", stderr);
-        }
-
-        Ok(())
+        self.client.unspam(id).await
     }
 
     async fn archive(&self, id: &str) -> Result<()> {
-        let output = Command::new("outlook")
-            .args(["archive", id])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook archive")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook archive failed: {}", stderr);
-        }
-
-        Ok(())
+        self.client.archive(id).await
     }
 
     async fn trash(&self, id: &str) -> Result<()> {
-        let output = Command::new("outlook")
-            .args(["delete", id])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-            .context("Failed to run outlook delete")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("outlook delete failed: {}", stderr);
-        }
-
-        Ok(())
+        self.client.trash(id).await
     }
 }

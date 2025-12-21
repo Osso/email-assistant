@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 gmail = { path = "../gmail" }
+outlook = { path = "../outlook" }
 tokio = { version = "1", features = ["full", "process"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
