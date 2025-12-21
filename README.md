@@ -9,41 +9,13 @@ AI-powered email classification using Claude. Automatically labels and organizes
 git clone https://github.com/Osso/email-assistant.git
 cd email-assistant
 cargo install --path .
+
+# Authenticate with your email provider (opens browser)
+email-assistant login                      # Gmail (default)
+email-assistant --provider outlook login   # Outlook
 ```
 
 Requires [Claude Code CLI](https://claude.ai/code) to be installed and authenticated.
-
-## Provider Setup
-
-### Gmail
-
-```bash
-# Install gmail-cli
-git clone https://github.com/Osso/gmail-cli.git
-cd gmail-cli
-cargo install --path .
-
-# Configure OAuth credentials (from Google Cloud Console)
-gmail config <client-id> <client-secret>
-
-# Authenticate
-gmail login
-```
-
-### Outlook
-
-```bash
-# Install outlook-cli
-git clone https://github.com/Osso/outlook-cli.git
-cd outlook-cli
-cargo install --path .
-
-# Configure OAuth credentials (from Azure Portal)
-outlook config <client-id> <client-secret>
-
-# Authenticate
-outlook login
-```
 
 ## Usage
 
@@ -77,6 +49,7 @@ email-assistant profile
 
 | Command | Description |
 |---------|-------------|
+| `login` | Authenticate with email provider |
 | `scan` | Classify unprocessed emails |
 | `summary` | AI-generated inbox summary |
 | `learn` | Learn from label corrections |
