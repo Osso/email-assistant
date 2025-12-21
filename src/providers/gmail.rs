@@ -11,12 +11,8 @@ pub struct GmailProvider {
 impl GmailProvider {
     pub async fn new() -> Result<Self> {
         let cfg = gmail::config::load_config()?;
-        let client_id = cfg.client_id.ok_or_else(|| {
-            anyhow::anyhow!("Gmail not configured. Run 'gmail config <client-id>' first")
-        })?;
-        let client_secret = cfg.client_secret.ok_or_else(|| {
-            anyhow::anyhow!("Gmail not configured. Run 'gmail config <client-id>' first")
-        })?;
+        let client_id = cfg.client_id();
+        let client_secret = cfg.client_secret();
 
         let tokens = gmail::config::load_tokens()
             .context("Not logged in. Run 'gmail login' first")?;
@@ -30,7 +26,7 @@ impl GmailProvider {
             Err(_) => {
                 // Token expired, try refresh
                 let new_tokens =
-                    gmail::auth::refresh_token(&client_id, &client_secret, &tokens.refresh_token)
+                    gmail::auth::refresh_token(client_id, client_secret, &tokens.refresh_token)
                         .await?;
                 gmail::Client::new(&new_tokens.access_token)
             }
