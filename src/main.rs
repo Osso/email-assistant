@@ -18,9 +18,9 @@ struct Cli {
     #[arg(long, global = true)]
     dry_run: bool,
 
-    /// Email provider to use
-    #[arg(long, global = true, default_value = "gmail")]
-    provider: String,
+    /// Email provider to use (gmail or outlook)
+    #[arg(long, global = true)]
+    provider: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -28,6 +28,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Configure settings
+    Config {
+        /// Set default provider (gmail or outlook)
+        #[arg(long)]
+        provider: Option<String>,
+    },
     /// Authenticate with email provider (opens browser)
     Login,
     /// Scan and classify emails (learns from corrections first)
@@ -91,13 +97,17 @@ enum LabelsAction {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let dry_run = cli.dry_run;
-    let provider = &cli.provider;
+    let cfg = config::Config::load()?;
+    let provider = cli.provider.as_deref().unwrap_or_else(|| cfg.default_provider());
 
     if dry_run {
         println!("🔍 DRY RUN MODE - no changes will be made\n");
     }
 
     match cli.command {
+        Commands::Config { provider: new_provider } => {
+            commands::config(new_provider).await?;
+        }
         Commands::Login => {
             commands::login(provider).await?;
         }
@@ -163,6 +173,23 @@ mod commands {
             "outlook" => Ok(Box::new(OutlookProvider::new().await?)),
             _ => anyhow::bail!("Unknown provider: {}. Use 'gmail' or 'outlook'", name),
         }
+    }
+
+    pub async fn config(provider: Option<String>) -> Result<()> {
+        let mut cfg = Config::load()?;
+
+        if let Some(p) = provider {
+            if p != "gmail" && p != "outlook" {
+                anyhow::bail!("Invalid provider: {}. Use 'gmail' or 'outlook'", p);
+            }
+            cfg.provider = Some(p.clone());
+            cfg.save()?;
+            println!("Default provider set to: {}", p);
+        } else {
+            println!("Current settings:");
+            println!("  provider: {}", cfg.default_provider());
+        }
+        Ok(())
     }
 
     pub async fn login(provider_name: &str) -> Result<()> {

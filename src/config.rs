@@ -40,4 +40,18 @@ impl Config {
             Ok(Config::default())
         }
     }
+
+    pub fn save(&self) -> Result<()> {
+        let dir = config_dir();
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(config_path(), content)?;
+        Ok(())
+    }
+
+    pub fn default_provider(&self) -> &str {
+        self.provider.as_deref().unwrap_or("gmail")
+    }
 }
