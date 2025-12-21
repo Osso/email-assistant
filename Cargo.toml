@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gmail = { path = "../gmail" }
-outlook = { path = "../outlook" }
+gmail = { git = "https://github.com/Osso/gmail-cli" }
+outlook = { git = "https://github.com/Osso/outlook-cli" }
 tokio = { version = "1", features = ["full", "process"] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
