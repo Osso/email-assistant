@@ -12,7 +12,6 @@ impl OutlookProvider {
     pub async fn new() -> Result<Self> {
         let cfg = outlook::config::load_config()?;
         let client_id = cfg.client_id();
-        let client_secret = cfg.client_secret();
 
         let tokens = outlook::config::load_tokens()
             .context("Not logged in. Run 'outlook login' first")?;
@@ -26,7 +25,7 @@ impl OutlookProvider {
             Err(_) => {
                 // Token expired, try refresh
                 let new_tokens =
-                    outlook::auth::refresh_token(client_id, client_secret, &tokens.refresh_token)
+                    outlook::auth::refresh_token(client_id, &tokens.refresh_token)
                         .await?;
                 outlook::api::Client::new(&new_tokens.access_token)
             }
