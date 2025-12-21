@@ -1,5 +1,6 @@
 pub mod gmail;
 pub mod outlook;
+pub mod outlook_web;
 
 use anyhow::Result;
 use async_trait::async_trait;

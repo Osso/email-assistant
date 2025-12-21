@@ -18,7 +18,7 @@ struct Cli {
     #[arg(long, global = true)]
     dry_run: bool,
 
-    /// Email provider to use (gmail or outlook)
+    /// Email provider to use (gmail, outlook, or outlook-web)
     #[arg(long, global = true)]
     provider: Option<String>,
 
@@ -30,7 +30,7 @@ struct Cli {
 enum Commands {
     /// Configure settings
     Config {
-        /// Set default provider (gmail or outlook)
+        /// Set default provider (gmail, outlook, or outlook-web)
         #[arg(long)]
         provider: Option<String>,
     },
@@ -163,6 +163,7 @@ mod commands {
     use crate::profile::Profile;
     use crate::providers::gmail::GmailProvider;
     use crate::providers::outlook::OutlookProvider;
+    use crate::providers::outlook_web::OutlookWebProvider;
     use crate::providers::EmailProvider;
     use crate::rules;
     use anyhow::Result;
@@ -171,7 +172,8 @@ mod commands {
         match name {
             "gmail" => Ok(Box::new(GmailProvider::new().await?)),
             "outlook" => Ok(Box::new(OutlookProvider::new().await?)),
-            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail' or 'outlook'", name),
+            "outlook-web" => Ok(Box::new(OutlookWebProvider::new()?)),
+            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail', 'outlook', or 'outlook-web'", name),
         }
     }
 
@@ -179,12 +181,14 @@ mod commands {
         let mut cfg = Config::load()?;
 
         if let Some(p) = provider {
-            if p != "gmail" && p != "outlook" {
-                anyhow::bail!("Invalid provider: {}. Use 'gmail' or 'outlook'", p);
+            match p.as_str() {
+                "gmail" | "outlook" | "outlook-web" => {
+                    cfg.provider = Some(p.clone());
+                    cfg.save()?;
+                    println!("Default provider set to: {}", p);
+                }
+                _ => anyhow::bail!("Invalid provider: {}. Use 'gmail', 'outlook', or 'outlook-web'", p),
             }
-            cfg.provider = Some(p.clone());
-            cfg.save()?;
-            println!("Default provider set to: {}", p);
         } else {
             println!("Current settings:");
             println!("  provider: {}", cfg.default_provider());
@@ -207,7 +211,13 @@ mod commands {
                 outlook::auth::login(client_id).await?;
                 println!("Outlook login successful! Tokens saved.");
             }
-            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail' or 'outlook'", provider_name),
+            "outlook-web" => {
+                println!("outlook-web uses browser automation - no login required.");
+                println!("Start your browser with remote debugging enabled:");
+                println!("  vivaldi --remote-debugging-port=9222");
+                println!("Then open Outlook Web and log in manually.");
+            }
+            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail', 'outlook', or 'outlook-web'", provider_name),
         }
         Ok(())
     }

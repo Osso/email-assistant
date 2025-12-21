@@ -2,10 +2,6 @@ use crate::profile::Profile;
 use crate::providers::Email;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
-use std::time::Duration;
-use tokio::process::Command;
-use tokio::time::timeout;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Classification {
@@ -87,42 +83,12 @@ Respond with JSON only:
             body_preview
         );
 
-        // Use stdin for prompt to avoid CLI arg length limits
-        // Disallow all MCP tools to prevent prompt injection from email content
-        let mut child = Command::new("claude")
-            .args([
-                "-p", "-",
-                "--output-format", "json",
-                "--model", "haiku",
-                "--disallowedTools", "mcp__browsermcp__browser_navigate,mcp__browsermcp__browser_click,mcp__browsermcp__browser_snapshot,mcp__browsermcp__browser_screenshot,mcp__browsermcp__browser_wait,mcp__browsermcp__browser_hover,mcp__browsermcp__browser_type,mcp__browsermcp__browser_select_option,mcp__browsermcp__browser_press_key,mcp__browsermcp__browser_go_back,mcp__browsermcp__browser_go_forward,mcp__browsermcp__browser_get_console_logs",
-                "--no-session-persistence",
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn claude CLI")?;
-
-        // Write prompt to stdin
-        if let Some(mut stdin) = child.stdin.take() {
-            use tokio::io::AsyncWriteExt;
-            stdin.write_all(prompt.as_bytes()).await?;
-        }
-
-        let output = timeout(Duration::from_secs(30), child.wait_with_output())
+        let output = claude_safe::call(&prompt, "haiku", "json")
             .await
-            .context("Claude CLI timed out after 30s")?
-            .context("Failed to run claude CLI")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("claude CLI failed: {}", stderr);
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
+            .map_err(|e| anyhow::anyhow!("Failed to call claude: {}", e))?;
 
         // Parse the wrapper JSON from claude --output-format json
-        let wrapper: ClaudeResponse = serde_json::from_str(&stdout)
+        let wrapper: ClaudeResponse = serde_json::from_str(&output)
             .context("Failed to parse claude response wrapper")?;
 
         // Extract the classification JSON from the result text
