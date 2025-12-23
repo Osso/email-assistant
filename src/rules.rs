@@ -13,8 +13,10 @@ pub struct RuleFile {
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
+    #[allow(dead_code)] // Used for config documentation
     pub name: String,
     #[serde(default)]
+    #[allow(dead_code)] // Used for config documentation
     pub description: String,
     pub condition: Condition,
     pub action: String,

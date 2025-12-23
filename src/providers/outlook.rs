@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 pub struct OutlookProvider {
     client: outlook::api::Client,
+    #[allow(dead_code)] // May be used for category name lookup later
     category_id_to_name: HashMap<String, String>,
 }
 
