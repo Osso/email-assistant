@@ -15,4 +15,4 @@ anyhow = "1"
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
-claude-safe = { git = "ssh://git.localdomain/claude-safe" }
+claude-safe = { git = "https://github.com/Osso/claude-safe" }
