@@ -1502,7 +1502,6 @@ dependencies = [
 [[package]]
 name = "outlook-web"
 version = "0.1.0"
-source = "git+https://github.com/Osso/outlook-web#f588974fa1c1d87c8b74b2e67e72390380f8b452"
 dependencies = [
  "anyhow",
  "chromiumoxide",
