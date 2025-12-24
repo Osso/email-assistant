@@ -307,10 +307,9 @@ mod commands {
             // Format: theme labels + action labels
             let all_labels = classification.labels();
             println!(
-                "{} {} | {} | {:?}{}",
-                email.id,
+                "{} | {} | {:?}{}",
                 status,
-                email.subject.chars().take(50).collect::<String>(),
+                email.subject.chars().take(60).collect::<String>(),
                 all_labels,
                 action_str
             );
