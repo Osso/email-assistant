@@ -10,7 +10,7 @@ pub struct Classification {
     pub archive: bool,
     #[serde(default)]
     pub delete: bool,
-    /// Theme labels (1-2): what the email is about
+    /// Theme labels (1-5): what the email is about
     #[serde(default)]
     pub theme: Vec<String>,
     /// Action labels: what to do with it
@@ -26,10 +26,13 @@ impl Classification {
     }
 }
 
-/// Response wrapper from `claude --output-format json`
+/// Response event from `claude --output-format json`
 #[derive(Debug, Deserialize)]
-struct ClaudeResponse {
-    result: String,
+struct ClaudeEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    #[serde(default)]
+    result: Option<String>,
 }
 
 pub struct Classifier<'a> {
@@ -60,7 +63,7 @@ Body: {}
 
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
-- theme: 1-2 labels describing what email is about. Examples: "Receipts" (payment confirmations AFTER charge), "Bills" (upcoming payments, auto-renewal notices, subscription charges - archive if auto-pay), "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account"
+- theme: 1-5 labels describing what email is about. Examples: "Receipts" (payment confirmations AFTER charge), "Bills" (upcoming payments, auto-renewal notices, subscription charges - archive if auto-pay), "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account"
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
   - "Promotional" - ads, sales, marketing from companies (auto-archive)
@@ -87,12 +90,20 @@ Respond with JSON only:
             .await
             .map_err(|e| anyhow::anyhow!("Failed to call claude: {}", e))?;
 
-        // Parse the wrapper JSON from claude --output-format json
-        let wrapper: ClaudeResponse = serde_json::from_str(&output)
-            .context("Failed to parse claude response wrapper")?;
+        // Parse the JSON array from claude --output-format json
+        let events: Vec<ClaudeEvent> = serde_json::from_str(&output)
+            .context("Failed to parse claude response events")?;
+
+        // Find the result event (last one with type="result")
+        let result_text = events
+            .iter()
+            .rev()
+            .find(|e| e.event_type == "result")
+            .and_then(|e| e.result.as_ref())
+            .context("No result found in claude response")?;
 
         // Extract the classification JSON from the result text
-        let json_str = extract_json(&wrapper.result)?;
+        let json_str = extract_json(result_text)?;
 
         let mut classification: Classification =
             serde_json::from_str(&json_str).context("Failed to parse classification response")?;
