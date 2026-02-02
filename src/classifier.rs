@@ -63,10 +63,10 @@ Body: {}
 
 Classify this email:
 - is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
-- theme: 1-5 labels describing what email is about. Examples: "Receipts" (payment confirmations AFTER charge), "Bills" (upcoming payments, auto-renewal notices, subscription charges - archive if auto-pay), "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account"
+- theme: 1-5 labels describing what email is about. Examples: "Receipts" (payment confirmations AFTER charge), "Bills" (upcoming payments, auto-renewal notices, subscription charges - archive if auto-pay), "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account", "Home" (smart home alerts, leak sensors, thermostat, security cameras)
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
-  - "Promotional" - ads, sales, marketing from companies (auto-archive)
+  - "Promotional" - ads, sales, marketing, webinar invites from companies (auto-delete)
   - "Survey" - feedback requests, satisfaction surveys, NPS scores (auto-archive)
   - "Needs-Reply" - expects a response from you (questions, requests, invitations). Archive unless reply needed today/tomorrow
   - "Important" - requires your attention today
@@ -74,8 +74,8 @@ Classify this email:
   - "Awaiting-Reply" - you sent something and are waiting for response, no action needed now (auto-archive)
   - "Group-Thread" - group thread/discussion where you're CC'd (auto-archive)
   - "Other" - doesn't fit other categories (auto-archive)
-- archive: true if email doesn't need to stay in inbox (Newsletters, Promotional, Survey, Awaiting-Reply, Group-Thread, Other, Updates, Needs-Reply without urgency, Bills without Needs-Reply, receipts under $500, account notifications without action required). NEVER archive Security emails
-- delete: true if email matches auto-delete rules in profile. CHECK THE TO FIELD - if email is TO a work address listed in Auto-Delete Rules, set delete=true
+- archive: true if email doesn't need to stay in inbox (Newsletters, Survey, Awaiting-Reply, Group-Thread, Other, Updates, Needs-Reply without urgency, Bills without Needs-Reply, receipts under $500, account notifications without action required). NEVER archive Security emails
+- delete: true if Promotional OR matches auto-delete rules in profile (including language rules). CHECK THE TO FIELD - if email is TO a work address listed in Auto-Delete Rules, set delete=true. NEVER delete Personal emails, Needs-Reply emails, or emails from personal contacts
 
 Respond with JSON only:
 {{"is_spam": false, "theme": ["Finance"], "action": ["Important"], "archive": false, "delete": false, "confidence": 0.8}}"#,

@@ -158,7 +158,7 @@ mod commands {
     use crate::classifier::Classifier;
     use crate::config::Config;
     use crate::labels::LabelManager;
-    use crate::learning::LearningEngine;
+    use crate::learning::{is_system_label, LearningEngine};
     use crate::predictions::PredictionStore;
     use crate::profile::Profile;
     use crate::providers::gmail::GmailProvider;
@@ -331,7 +331,12 @@ mod commands {
                     // Only store prediction if Classified label was successfully applied
                     match provider.add_label(&email.id, "Classified").await {
                         Ok(_) => {
-                            predictions.store(&email.id, &email.from, &email.subject, &classification)?;
+                            // Store labels that were already on the email before we classified
+                            let pre_existing: Vec<String> = email.labels.iter()
+                                .filter(|l| !is_system_label(l))
+                                .cloned()
+                                .collect();
+                            predictions.store(&email.id, &email.from, &email.subject, &classification, pre_existing)?;
                         }
                         Err(e) => {
                             eprintln!("  Warning: couldn't apply Classified label: {}", e);

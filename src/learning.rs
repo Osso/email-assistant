@@ -68,12 +68,15 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
                 .cloned()
                 .collect();
 
-            // Check for new user-added labels (excluding system labels, case-insensitive)
+            // Check for new user-added labels (excluding system labels and pre-existing labels)
             let added_labels: Vec<_> = email.labels.iter()
                 .filter(|email_label| {
                     !is_system_label(email_label) &&
                     !predicted_labels.iter().any(|pred_label|
                         pred_label.eq_ignore_ascii_case(email_label)
+                    ) &&
+                    !prediction.pre_existing_labels.iter().any(|pre_label|
+                        pre_label.eq_ignore_ascii_case(email_label)
                     )
                 })
                 .cloned()
@@ -82,15 +85,20 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             let label_mismatch = !removed_labels.is_empty() || !added_labels.is_empty();
 
             if spam_mismatch || label_mismatch {
+                let mut predicted = prediction.all_labels();
+                predicted.sort();
+                let mut actual: Vec<_> = email.labels.iter()
+                    .filter(|l| !is_system_label(l))
+                    .cloned()
+                    .collect();
+                actual.sort();
+
                 result.corrections.push(Correction {
                     email_id: prediction.email_id.clone(),
                     from: prediction.from.clone(),
                     subject: prediction.subject.clone(),
-                    predicted_labels: prediction.all_labels(),
-                    actual_labels: email.labels.iter()
-                        .filter(|l| !is_system_label(l))
-                        .cloned()
-                        .collect(),
+                    predicted_labels: predicted,
+                    actual_labels: actual,
                     predicted_spam: prediction.is_spam,
                     actual_spam,
                 });
@@ -279,7 +287,7 @@ If no meaningful patterns can be extracted, respond with just: NO_UPDATE_NEEDED"
     }
 }
 
-fn is_system_label(label: &str) -> bool {
+pub fn is_system_label(label: &str) -> bool {
     // Gmail system labels
     if matches!(
         label,

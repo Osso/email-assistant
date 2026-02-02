@@ -23,6 +23,9 @@ pub struct Prediction {
     /// Legacy field for backward compatibility
     #[serde(default)]
     pub labels: Vec<String>,
+    /// Labels that were already on the email before classification
+    #[serde(default)]
+    pub pre_existing_labels: Vec<String>,
     pub confidence: f32,
     pub timestamp: DateTime<Utc>,
 }
@@ -73,7 +76,7 @@ impl PredictionStore {
         self.predictions.get(email_id)
     }
 
-    pub fn store(&mut self, email_id: &str, from: &str, subject: &str, classification: &Classification) -> Result<()> {
+    pub fn store(&mut self, email_id: &str, from: &str, subject: &str, classification: &Classification, pre_existing_labels: Vec<String>) -> Result<()> {
         self.predictions.insert(
             email_id.to_string(),
             Prediction {
@@ -84,6 +87,7 @@ impl PredictionStore {
                 theme: classification.theme.clone(),
                 action: classification.action.clone(),
                 labels: vec![], // Legacy field, no longer used
+                pre_existing_labels,
                 confidence: classification.confidence,
                 timestamp: Utc::now(),
             },
