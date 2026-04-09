@@ -32,7 +32,11 @@ pub struct LearningEngine<'a, P: EmailProvider> {
 }
 
 impl<'a, P: EmailProvider> LearningEngine<'a, P> {
-    pub fn new(provider: &'a P, profile: &'a mut Profile, predictions: &'a PredictionStore) -> Self {
+    pub fn new(
+        provider: &'a P,
+        profile: &'a mut Profile,
+        predictions: &'a PredictionStore,
+    ) -> Self {
         Self {
             provider,
             profile,
@@ -58,26 +62,34 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             let spam_mismatch = prediction.is_spam != actual_spam;
 
             // Check if our predicted labels are still on the email (case-insensitive)
+            // Exclude "active" labels (Needs-Reply, Important, etc.) - removing them
+            // is normal workflow, not a correction
             let predicted_labels = prediction.all_labels();
-            let removed_labels: Vec<_> = predicted_labels.iter()
+            let removed_labels: Vec<_> = predicted_labels
+                .iter()
                 .filter(|pred_label| {
-                    !email.labels.iter().any(|email_label|
-                        email_label.eq_ignore_ascii_case(pred_label)
-                    )
+                    !is_active_label(pred_label)
+                        && !email
+                            .labels
+                            .iter()
+                            .any(|email_label| email_label.eq_ignore_ascii_case(pred_label))
                 })
                 .cloned()
                 .collect();
 
             // Check for new user-added labels (excluding system labels and pre-existing labels)
-            let added_labels: Vec<_> = email.labels.iter()
+            let added_labels: Vec<_> = email
+                .labels
+                .iter()
                 .filter(|email_label| {
-                    !is_system_label(email_label) &&
-                    !predicted_labels.iter().any(|pred_label|
-                        pred_label.eq_ignore_ascii_case(email_label)
-                    ) &&
-                    !prediction.pre_existing_labels.iter().any(|pre_label|
-                        pre_label.eq_ignore_ascii_case(email_label)
-                    )
+                    !is_system_label(email_label)
+                        && !predicted_labels
+                            .iter()
+                            .any(|pred_label| pred_label.eq_ignore_ascii_case(email_label))
+                        && !prediction
+                            .pre_existing_labels
+                            .iter()
+                            .any(|pre_label| pre_label.eq_ignore_ascii_case(email_label))
                 })
                 .cloned()
                 .collect();
@@ -87,7 +99,9 @@ impl<'a, P: EmailProvider> LearningEngine<'a, P> {
             if spam_mismatch || label_mismatch {
                 let mut predicted = prediction.all_labels();
                 predicted.sort();
-                let mut actual: Vec<_> = email.labels.iter()
+                let mut actual: Vec<_> = email
+                    .labels
+                    .iter()
                     .filter(|l| !is_system_label(l))
                     .cloned()
                     .collect();
@@ -174,7 +188,10 @@ If this action reveals a new pattern that should be added to the profile, output
 If no update is needed (the profile already covers this case), respond with just: NO_UPDATE_NEEDED"#,
             action,
             if let Some(p) = prediction {
-                format!("Previous prediction: is_spam={}, labels={:?}", p.is_spam, p.labels)
+                format!(
+                    "Previous prediction: is_spam={}, labels={:?}",
+                    p.is_spam, p.labels
+                )
             } else {
                 "No previous prediction".to_string()
             },
@@ -221,12 +238,15 @@ If no update is needed (the profile already covers this case), respond with just
         &self,
         corrections: &[Correction],
     ) -> Result<Option<String>> {
-        let corrections_text: Vec<String> = corrections.iter().map(|c| {
-            format!(
-                "- From: {}\n  Subject: {}\n  Predicted: {:?}\n  Actual: {:?}",
-                c.from, c.subject, c.predicted_labels, c.actual_labels
-            )
-        }).collect();
+        let corrections_text: Vec<String> = corrections
+            .iter()
+            .map(|c| {
+                format!(
+                    "- From: {}\n  Subject: {}\n  Predicted: {:?}\n  Actual: {:?}",
+                    c.from, c.subject, c.predicted_labels, c.actual_labels
+                )
+            })
+            .collect();
 
         let prompt = format!(
             r#"The user corrected these email classifications. Update the profile rules to prevent these mistakes.
@@ -311,6 +331,15 @@ pub fn is_system_label(label: &str) -> bool {
     label.eq_ignore_ascii_case("Classified")
 }
 
+/// Labels that are removed as part of normal workflow (not corrections).
+/// Users remove these after taking action - this is expected behavior.
+fn is_active_label(label: &str) -> bool {
+    matches!(
+        label.to_lowercase().as_str(),
+        "needs-reply" | "important" | "urgent" | "awaiting-reply"
+    )
+}
+
 fn extract_profile_update(response: &str) -> Option<String> {
     // Look for markdown code block
     if let Some(start) = response.find("```markdown") {
@@ -328,7 +357,11 @@ fn extract_profile_update(response: &str) -> Option<String> {
             .map(|i| content_start + i + 1)
             .unwrap_or(content_start);
         if let Some(end) = response[actual_start..].find("```") {
-            return Some(response[actual_start..actual_start + end].trim().to_string());
+            return Some(
+                response[actual_start..actual_start + end]
+                    .trim()
+                    .to_string(),
+            );
         }
     }
 

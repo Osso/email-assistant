@@ -22,7 +22,11 @@ pub struct Classification {
 impl Classification {
     /// Combined labels for backward compatibility
     pub fn labels(&self) -> Vec<String> {
-        self.theme.iter().chain(self.action.iter()).cloned().collect()
+        self.theme
+            .iter()
+            .chain(self.action.iter())
+            .cloned()
+            .collect()
     }
 }
 
@@ -62,7 +66,7 @@ Body: {}
 </email>
 
 Classify this email:
-- is_spam: true ONLY if clearly malicious/scam/phishing, false for newsletters and promotions
+- is_spam: true if malicious/scam/phishing/horoscope/astrology/psychic spam, false for legitimate newsletters
 - theme: 1-5 labels describing what email is about. Examples: "Receipts" (payment confirmations AFTER charge), "Bills" (upcoming payments, auto-renewal notices, subscription charges - archive if auto-pay), "Finance", "Health", "Shopping", "Travel", "Work", "Personal", "Social", "Security", "Gaming", "Shipping", "Updates", "Account", "Home" (smart home alerts, leak sensors, thermostat, security cameras)
 - action: 0+ labels for what to do. Options:
   - "Newsletters" - regular subscription content you signed up for
@@ -75,7 +79,7 @@ Classify this email:
   - "Group-Thread" - group thread/discussion where you're CC'd (auto-archive)
   - "Other" - doesn't fit other categories (auto-archive)
 - archive: true if email doesn't need to stay in inbox (Newsletters, Survey, Awaiting-Reply, Group-Thread, Other, Updates, Needs-Reply without urgency, Bills without Needs-Reply, receipts under $500, account notifications without action required). NEVER archive Security emails
-- delete: true if Promotional OR matches auto-delete rules in profile (including language rules). CHECK THE TO FIELD - if email is TO a work address listed in Auto-Delete Rules, set delete=true. NEVER delete Personal emails, Needs-Reply emails, or emails from personal contacts
+- delete: true if is_spam OR Promotional OR expired calendar invites (date in the past) OR matches auto-delete rules in profile (including language rules). CHECK THE TO FIELD - if email is TO a work address listed in Auto-Delete Rules, set delete=true. NEVER delete Personal emails, Needs-Reply emails, or emails from personal contacts. "Personal" means from someone you know, NOT spam with your name in it
 
 Respond with JSON only:
 {{"is_spam": false, "theme": ["Finance"], "action": ["Important"], "archive": false, "delete": false, "confidence": 0.8}}"#,
@@ -86,13 +90,13 @@ Respond with JSON only:
             body_preview
         );
 
-        let output = claude_safe::call(&prompt, "haiku", "json")
+        let output = claude_safe::call(&prompt, "opus", "json")
             .await
             .map_err(|e| anyhow::anyhow!("Failed to call claude: {}", e))?;
 
         // Parse the JSON array from claude --output-format json
-        let events: Vec<ClaudeEvent> = serde_json::from_str(&output)
-            .context("Failed to parse claude response events")?;
+        let events: Vec<ClaudeEvent> =
+            serde_json::from_str(&output).context("Failed to parse claude response events")?;
 
         // Find the result event (last one with type="result")
         let result_text = events
@@ -109,15 +113,21 @@ Respond with JSON only:
             serde_json::from_str(&json_str).context("Failed to parse classification response")?;
 
         // Filter out internal labels that shouldn't be suggested by LLM
-        classification.theme.retain(|l| !l.eq_ignore_ascii_case("Classified"));
-        classification.action.retain(|l| !l.eq_ignore_ascii_case("Classified"));
+        classification
+            .theme
+            .retain(|l| !l.eq_ignore_ascii_case("Classified"));
+        classification
+            .action
+            .retain(|l| !l.eq_ignore_ascii_case("Classified"));
 
         // Capitalize first letter of each label for consistency
-        classification.theme = classification.theme
+        classification.theme = classification
+            .theme
             .into_iter()
             .map(|l| capitalize_first(&l))
             .collect();
-        classification.action = classification.action
+        classification.action = classification
+            .action
             .into_iter()
             .map(|l| capitalize_first(&l))
             .collect();
@@ -185,7 +195,8 @@ mod tests {
 
     #[test]
     fn test_extract_json_direct() {
-        let json = r#"{"is_spam": false, "is_important": true, "labels": ["work"], "confidence": 0.9}"#;
+        let json =
+            r#"{"is_spam": false, "is_important": true, "labels": ["work"], "confidence": 0.9}"#;
         assert_eq!(extract_json(json).unwrap(), json);
     }
 

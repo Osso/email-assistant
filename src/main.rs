@@ -98,14 +98,19 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let dry_run = cli.dry_run;
     let cfg = config::Config::load()?;
-    let provider = cli.provider.as_deref().unwrap_or_else(|| cfg.default_provider());
+    let provider = cli
+        .provider
+        .as_deref()
+        .unwrap_or_else(|| cfg.default_provider());
 
     if dry_run {
         println!("🔍 DRY RUN MODE - no changes will be made\n");
     }
 
     match cli.command {
-        Commands::Config { provider: new_provider } => {
+        Commands::Config {
+            provider: new_provider,
+        } => {
             commands::config(new_provider).await?;
         }
         Commands::Login => {
@@ -173,7 +178,10 @@ mod commands {
             "gmail" => Ok(Box::new(GmailProvider::new().await?)),
             "outlook" => Ok(Box::new(OutlookProvider::new().await?)),
             "outlook-web" => Ok(Box::new(OutlookWebProvider::new()?)),
-            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail', 'outlook', or 'outlook-web'", name),
+            _ => anyhow::bail!(
+                "Unknown provider: {}. Use 'gmail', 'outlook', or 'outlook-web'",
+                name
+            ),
         }
     }
 
@@ -187,7 +195,10 @@ mod commands {
                     cfg.save()?;
                     println!("Default provider set to: {}", p);
                 }
-                _ => anyhow::bail!("Invalid provider: {}. Use 'gmail', 'outlook', or 'outlook-web'", p),
+                _ => anyhow::bail!(
+                    "Invalid provider: {}. Use 'gmail', 'outlook', or 'outlook-web'",
+                    p
+                ),
             }
         } else {
             println!("Current settings:");
@@ -217,7 +228,10 @@ mod commands {
                 println!("  vivaldi --remote-debugging-port=9222");
                 println!("Then open Outlook Web and log in manually.");
             }
-            _ => anyhow::bail!("Unknown provider: {}. Use 'gmail', 'outlook', or 'outlook-web'", provider_name),
+            _ => anyhow::bail!(
+                "Unknown provider: {}. Use 'gmail', 'outlook', or 'outlook-web'",
+                provider_name
+            ),
         }
         Ok(())
     }
@@ -230,15 +244,23 @@ mod commands {
         let _label_manager = LabelManager::load()?;
 
         // Step 1: Learn from corrections first
-        let (deleted_ids, had_corrections) = {
+        let (deleted_ids, corrected_ids, had_corrections) = {
             let mut learning = LearningEngine::new(&provider, &mut profile, &predictions);
             let result = learning.detect_corrections().await?;
             let had_corrections = !result.corrections.is_empty();
 
+            // Collect IDs of corrected emails to remove from predictions
+            let corrected_ids: Vec<String> = result
+                .corrections
+                .iter()
+                .map(|c| c.email_id.clone())
+                .collect();
+
             if had_corrections {
                 println!("Found {} corrections:", result.corrections.len());
                 for correction in &result.corrections {
-                    println!("  - {} | {} (predicted: {:?}, actual: {:?})",
+                    println!(
+                        "  - {} | {} (predicted: {:?}, actual: {:?})",
                         correction.email_id,
                         correction.subject.chars().take(40).collect::<String>(),
                         correction.predicted_labels,
@@ -265,7 +287,7 @@ mod commands {
                 }
             }
 
-            (result.deleted_ids, had_corrections)
+            (result.deleted_ids, corrected_ids, had_corrections)
         };
 
         // Save profile after learning engine is dropped
@@ -273,9 +295,12 @@ mod commands {
             profile.save()?;
         }
 
-        // Clean up predictions for deleted emails
+        // Clean up predictions for deleted and corrected emails
         if !dry_run {
             for id in &deleted_ids {
+                predictions.remove(id);
+            }
+            for id in &corrected_ids {
                 predictions.remove(id);
             }
         }
@@ -284,7 +309,12 @@ mod commands {
         let classifier = Classifier::new(&profile);
         let user_rules = rules::load_rules().unwrap_or_default();
         let label = if archived { "" } else { "INBOX" };
-        let emails = provider.list_messages(max, label, Some("-label:Classified")).await?;
+        let query = if archived {
+            Some("-label:Classified -in:spam -in:trash")
+        } else {
+            Some("-label:Classified")
+        };
+        let emails = provider.list_messages(max, label, query).await?;
 
         for email in emails {
             let mut classification = classifier.classify(&email).await?;
@@ -292,8 +322,25 @@ mod commands {
             // Apply user-defined rules (e.g., auto-delete based on To field)
             rules::apply_rules(&email, &mut classification, &user_rules);
 
+            // Safety: never delete Personal or Needs-Reply emails
+            if classification.delete {
+                let dominated_personal = classification
+                    .theme
+                    .iter()
+                    .any(|t| t.eq_ignore_ascii_case("Personal"));
+                let needs_reply = classification
+                    .action
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case("Needs-Reply"));
+                if dominated_personal || needs_reply {
+                    classification.delete = false;
+                }
+            }
+
             // Build status indicators
-            let is_important = classification.action.iter()
+            let is_important = classification
+                .action
+                .iter()
                 .any(|a| a == "Important" || a == "Urgent");
             let status = build_status_indicators(&email.labels, is_important);
             let action_str = if classification.delete {
@@ -332,11 +379,19 @@ mod commands {
                     match provider.add_label(&email.id, "Classified").await {
                         Ok(_) => {
                             // Store labels that were already on the email before we classified
-                            let pre_existing: Vec<String> = email.labels.iter()
+                            let pre_existing: Vec<String> = email
+                                .labels
+                                .iter()
                                 .filter(|l| !is_system_label(l))
                                 .cloned()
                                 .collect();
-                            predictions.store(&email.id, &email.from, &email.subject, &classification, pre_existing)?;
+                            predictions.store(
+                                &email.id,
+                                &email.from,
+                                &email.subject,
+                                &classification,
+                                pre_existing,
+                            )?;
                         }
                         Err(e) => {
                             eprintln!("  Warning: couldn't apply Classified label: {}", e);
@@ -521,7 +576,10 @@ mod commands {
 
             // Learn from this action
             let learning = LearningEngine::new(&provider, &mut profile, &predictions);
-            if let Some(update) = learning.learn_from_action(id, &format!("label:{}", label), &email).await? {
+            if let Some(update) = learning
+                .learn_from_action(id, &format!("label:{}", label), &email)
+                .await?
+            {
                 println!("\n📝 Profile updated:");
                 println!("{}", update);
                 profile.save()?;
@@ -546,10 +604,9 @@ mod commands {
             } else {
                 println!("Found {} corrections:", result.corrections.len());
                 for correction in &result.corrections {
-                    println!("  - {} (predicted: {:?}, actual: {:?})",
-                        correction.email_id,
-                        correction.predicted_labels,
-                        correction.actual_labels
+                    println!(
+                        "  - {} (predicted: {:?}, actual: {:?})",
+                        correction.email_id, correction.predicted_labels, correction.actual_labels
                     );
                 }
 
@@ -581,7 +638,10 @@ mod commands {
 
         // Clean up predictions for deleted emails
         if !deleted_ids.is_empty() {
-            println!("Cleaned up {} deleted emails from predictions.", deleted_ids.len());
+            println!(
+                "Cleaned up {} deleted emails from predictions.",
+                deleted_ids.len()
+            );
             if !dry_run {
                 for id in &deleted_ids {
                     predictions.remove(id);
@@ -647,7 +707,9 @@ mod commands {
         let provider = create_provider(provider_name).await?;
 
         // Fetch unclassified emails
-        let emails = provider.list_messages(100, "INBOX", Some("-label:Classified")).await?;
+        let emails = provider
+            .list_messages(100, "INBOX", Some("-label:Classified"))
+            .await?;
 
         if emails.is_empty() {
             println!("No unclassified emails in inbox.");
@@ -736,7 +798,13 @@ Format:
         let is_unread = labels.iter().any(|l| l == "UNREAD");
 
         let c1 = if is_unread { "●" } else { " " };
-        let c2 = if is_starred { "*" } else if !in_inbox { "A" } else { " " };
+        let c2 = if is_starred {
+            "*"
+        } else if !in_inbox {
+            "A"
+        } else {
+            " "
+        };
         let c3 = if is_important { "🔥" } else { " " };
 
         format!("[{}{}{}]", c1, c2, c3)
