@@ -13,11 +13,11 @@ pub struct RuleFile {
 
 #[derive(Debug, Deserialize)]
 pub struct Rule {
-    #[allow(dead_code)] // Used for config documentation
-    pub name: String,
+    #[serde(rename = "name")]
+    pub _name: String,
     #[serde(default)]
-    #[allow(dead_code)] // Used for config documentation
-    pub description: String,
+    #[serde(rename = "description")]
+    pub _description: String,
     pub condition: Condition,
     pub action: String,
 }
@@ -74,12 +74,25 @@ pub fn apply_rules(email: &Email, classification: &mut Classification, rules: &[
     }
 }
 
-fn matches_condition(email: &Email, classification: &Classification, condition: &Condition) -> bool {
+fn matches_condition(
+    email: &Email,
+    classification: &Classification,
+    condition: &Condition,
+) -> bool {
     // Check the field condition
     let field_matches = match condition.field.as_str() {
-        "to" => email.to.to_lowercase().contains(&condition.contains.to_lowercase()),
-        "from" => email.from.to_lowercase().contains(&condition.contains.to_lowercase()),
-        "subject" => email.subject.to_lowercase().contains(&condition.contains.to_lowercase()),
+        "to" => email
+            .to
+            .to_lowercase()
+            .contains(&condition.contains.to_lowercase()),
+        "from" => email
+            .from
+            .to_lowercase()
+            .contains(&condition.contains.to_lowercase()),
+        "subject" => email
+            .subject
+            .to_lowercase()
+            .contains(&condition.contains.to_lowercase()),
         _ => false,
     };
 
@@ -127,8 +140,8 @@ mod tests {
 
     fn globalcomix_rule() -> Rule {
         Rule {
-            name: "Delete globalcomix".to_string(),
-            description: "Test rule".to_string(),
+            _name: "Delete globalcomix".to_string(),
+            _description: "Test rule".to_string(),
             condition: Condition {
                 field: "to".to_string(),
                 contains: "globalcomix.com".to_string(),

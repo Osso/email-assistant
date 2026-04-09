@@ -34,7 +34,11 @@ impl Prediction {
     /// All labels combined
     pub fn all_labels(&self) -> Vec<String> {
         if !self.theme.is_empty() || !self.action.is_empty() {
-            self.theme.iter().chain(self.action.iter()).cloned().collect()
+            self.theme
+                .iter()
+                .chain(self.action.iter())
+                .cloned()
+                .collect()
         } else {
             // Fallback to legacy labels field
             self.labels.clone()
@@ -76,7 +80,14 @@ impl PredictionStore {
         self.predictions.get(email_id)
     }
 
-    pub fn store(&mut self, email_id: &str, from: &str, subject: &str, classification: &Classification, pre_existing_labels: Vec<String>) -> Result<()> {
+    pub fn store(
+        &mut self,
+        email_id: &str,
+        from: &str,
+        subject: &str,
+        classification: &Classification,
+        pre_existing_labels: Vec<String>,
+    ) -> Result<()> {
         self.predictions.insert(
             email_id.to_string(),
             Prediction {

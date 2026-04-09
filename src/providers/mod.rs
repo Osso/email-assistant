@@ -23,7 +23,8 @@ pub struct Label {
 
 #[async_trait]
 pub trait EmailProvider: Send + Sync {
-    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>>;
+    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>)
+        -> Result<Vec<Email>>;
     async fn get_message(&self, id: &str) -> Result<Email>;
     async fn list_labels(&self) -> Result<Vec<Label>>;
     async fn add_label(&self, id: &str, label: &str) -> Result<()>;
@@ -35,7 +36,12 @@ pub trait EmailProvider: Send + Sync {
 
 #[async_trait]
 impl EmailProvider for Box<dyn EmailProvider> {
-    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>> {
+    async fn list_messages(
+        &self,
+        max: u32,
+        label: &str,
+        query: Option<&str>,
+    ) -> Result<Vec<Email>> {
         (**self).list_messages(max, label, query).await
     }
     async fn get_message(&self, id: &str) -> Result<Email> {

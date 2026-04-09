@@ -1,12 +1,9 @@
 use super::{Email, EmailProvider, Label};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 pub struct OutlookProvider {
     client: outlook::api::Client,
-    #[allow(dead_code)] // May be used for category name lookup later
-    category_id_to_name: HashMap<String, String>,
 }
 
 impl OutlookProvider {
@@ -14,8 +11,8 @@ impl OutlookProvider {
         let cfg = outlook::config::load_config()?;
         let client_id = cfg.client_id();
 
-        let tokens = outlook::config::load_tokens()
-            .context("Not logged in. Run 'outlook login' first")?;
+        let tokens =
+            outlook::config::load_tokens().context("Not logged in. Run 'outlook login' first")?;
 
         // Try to use existing token, refresh if needed
         let client = outlook::api::Client::new(&tokens.access_token);
@@ -26,25 +23,12 @@ impl OutlookProvider {
             Err(_) => {
                 // Token expired, try refresh
                 let new_tokens =
-                    outlook::auth::refresh_token(client_id, &tokens.refresh_token)
-                        .await?;
+                    outlook::auth::refresh_token(client_id, &tokens.refresh_token).await?;
                 outlook::api::Client::new(&new_tokens.access_token)
             }
         };
 
-        // Build category ID to name mapping
-        let mut category_id_to_name = HashMap::new();
-        if let Ok(categories) = client.list_categories().await {
-            if let Some(cat_list) = categories.value {
-                for cat in cat_list {
-                    if let Some(id) = cat.id {
-                        category_id_to_name.insert(id, cat.display_name);
-                    }
-                }
-            }
-        }
-
-        Ok(Self { client, category_id_to_name })
+        Ok(Self { client })
     }
 
     fn resolve_category_ids(&self, category_names: Vec<String>) -> Vec<String> {
@@ -68,7 +52,8 @@ impl OutlookProvider {
         }
 
         // Use body text if available, fall back to body preview
-        let body = msg.get_body_text()
+        let body = msg
+            .get_body_text()
             .or_else(|| msg.body_preview.clone())
             .map(|b| strip_html(&b))
             .unwrap_or_default();
@@ -77,7 +62,10 @@ impl OutlookProvider {
             id: msg.id.clone(),
             from: msg.get_from().unwrap_or_default(),
             to: msg.get_to().unwrap_or_default(),
-            subject: msg.subject.clone().unwrap_or_else(|| "(no subject)".to_string()),
+            subject: msg
+                .subject
+                .clone()
+                .unwrap_or_else(|| "(no subject)".to_string()),
             body,
             labels,
         }
@@ -114,7 +102,12 @@ fn strip_html(html: &str) -> String {
 
 #[async_trait]
 impl EmailProvider for OutlookProvider {
-    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>> {
+    async fn list_messages(
+        &self,
+        max: u32,
+        label: &str,
+        query: Option<&str>,
+    ) -> Result<Vec<Email>> {
         // Map Gmail-style label to Outlook folder
         let folder = match label {
             "INBOX" => "inbox",
@@ -135,7 +128,10 @@ impl EmailProvider for OutlookProvider {
             }
         });
 
-        let list = self.client.list_messages(folder, filter.as_deref(), max).await?;
+        let list = self
+            .client
+            .list_messages(folder, filter.as_deref(), max)
+            .await?;
 
         let mut emails = Vec::new();
         if let Some(messages) = list.value {

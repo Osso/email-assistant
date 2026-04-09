@@ -37,7 +37,12 @@ impl OutlookWebProvider {
 
 #[async_trait]
 impl EmailProvider for OutlookWebProvider {
-    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>> {
+    async fn list_messages(
+        &self,
+        max: u32,
+        label: &str,
+        query: Option<&str>,
+    ) -> Result<Vec<Email>> {
         // outlook-web only supports inbox for now
         if label != "INBOX" && !label.is_empty() {
             return Ok(Vec::new());

@@ -51,11 +51,16 @@ impl Profile {
     pub fn append_correction(&mut self, correction: &str) {
         // Find the "## Learned Corrections" section and append
         if let Some(idx) = self.content.find("## Learned Corrections") {
-            let insert_pos = self.content[idx..].find('\n').map(|i| idx + i + 1).unwrap_or(self.content.len());
-            self.content.insert_str(insert_pos, &format!("- {}\n", correction));
+            let insert_pos = self.content[idx..]
+                .find('\n')
+                .map(|i| idx + i + 1)
+                .unwrap_or(self.content.len());
+            self.content
+                .insert_str(insert_pos, &format!("- {}\n", correction));
         } else {
             // Add section if it doesn't exist
-            self.content.push_str(&format!("\n## Learned Corrections\n- {}\n", correction));
+            self.content
+                .push_str(&format!("\n## Learned Corrections\n- {}\n", correction));
         }
     }
 
@@ -65,16 +70,13 @@ impl Profile {
         if let Some(start) = self.content.find(&section_header) {
             // Find the next section or end
             let remaining = &self.content[start + section_header.len()..];
-            let end = remaining.find("\n### ")
+            let end = remaining
+                .find("\n### ")
                 .or_else(|| remaining.find("\n## "))
                 .map(|i| start + section_header.len() + i)
                 .unwrap_or(self.content.len());
 
-            self.content = format!(
-                "{}{}",
-                &self.content[..start],
-                &self.content[end..]
-            );
+            self.content = format!("{}{}", &self.content[..start], &self.content[end..]);
         }
     }
 }

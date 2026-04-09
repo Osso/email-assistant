@@ -14,8 +14,8 @@ impl GmailProvider {
         let client_id = cfg.client_id();
         let client_secret = cfg.client_secret();
 
-        let tokens = gmail::config::load_tokens()
-            .context("Not logged in. Run 'gmail login' first")?;
+        let tokens =
+            gmail::config::load_tokens().context("Not logged in. Run 'gmail login' first")?;
 
         // Try to use existing token, refresh if needed
         let client = gmail::Client::new(&tokens.access_token);
@@ -42,30 +42,34 @@ impl GmailProvider {
             }
         }
 
-        Ok(Self { client, label_id_to_name })
+        Ok(Self {
+            client,
+            label_id_to_name,
+        })
     }
 
     fn resolve_label_ids(&self, label_ids: Vec<String>) -> Vec<String> {
-        label_ids.into_iter()
-            .map(|id| {
-                self.label_id_to_name.get(&id)
-                    .cloned()
-                    .unwrap_or(id)
-            })
+        label_ids
+            .into_iter()
+            .map(|id| self.label_id_to_name.get(&id).cloned().unwrap_or(id))
             .collect()
     }
 
     fn message_to_email(&self, msg: gmail::Message) -> Email {
         let label_ids = msg.label_ids.clone().unwrap_or_default();
         // Use body text if available, fall back to snippet
-        let body = msg.get_body_text()
+        let body = msg
+            .get_body_text()
             .or_else(|| msg.snippet.clone())
             .unwrap_or_default();
         Email {
             id: msg.id.clone(),
             from: msg.get_header("From").unwrap_or("").to_string(),
             to: msg.get_header("To").unwrap_or("").to_string(),
-            subject: msg.get_header("Subject").unwrap_or("(no subject)").to_string(),
+            subject: msg
+                .get_header("Subject")
+                .unwrap_or("(no subject)")
+                .to_string(),
             body,
             labels: self.resolve_label_ids(label_ids),
         }
@@ -74,7 +78,12 @@ impl GmailProvider {
 
 #[async_trait]
 impl EmailProvider for GmailProvider {
-    async fn list_messages(&self, max: u32, label: &str, query: Option<&str>) -> Result<Vec<Email>> {
+    async fn list_messages(
+        &self,
+        max: u32,
+        label: &str,
+        query: Option<&str>,
+    ) -> Result<Vec<Email>> {
         let list = self.client.list_messages(query, label, max).await?;
 
         let mut emails = Vec::new();
